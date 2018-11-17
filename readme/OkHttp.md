@@ -117,7 +117,46 @@ void enqueue(AsyncCall call) {
     promoteAndExecute();
   }
 ```
-直接将AsycCall添加到准备就绪的队列里面，即将被执行,在Dispatcher里面有几个成员变量如下：
+直接将AsycCall添加到准备就绪的队列里面，即将被执行,而后紧接着调用pormoteAndExecute()方法
+```
+/**
+   * Promotes eligible calls from {@link #readyAsyncCalls} to {@link #runningAsyncCalls} and runs
+   * them on the executor service. Must not be called with synchronization because executing calls
+   * can call into user code.
+   *
+   * @return true if the dispatcher is currently running calls.
+   */
+  private boolean promoteAndExecute() {
+    assert (!Thread.holdsLock(this));
+
+    List<AsyncCall> executableCalls = new ArrayList<>();//可执行Call集合
+    boolean isRunning;
+    synchronized (this) {
+      for (Iterator<AsyncCall> i = readyAsyncCalls.iterator(); i.hasNext(); ) {
+        AsyncCall asyncCall = i.next();
+
+        if (runningAsyncCalls.size() >= maxRequests) break; // Max capacity.
+        if (runningCallsForHost(asyncCall) >= maxRequestsPerHost) continue; // Host max capacity.
+
+        i.remove();
+        executableCalls.add(asyncCall);
+        runningAsyncCalls.add(asyncCall);
+      }
+      isRunning = runningCallsCount() > 0;
+    }
+
+    for (int i = 0, size = executableCalls.size(); i < size; i++) {
+      AsyncCall asyncCall = executableCalls.get(i);
+      asyncCall.executeOn(executorService());//在线程池上面执行异步请求
+    }
+
+    return isRunning;
+  }
+```
+从promoteAndExecute方法的注释可以看出，从readyAsyncCalls集合里面挑出符合条件的加入到runningAsyncCalls，
+这里的条件就是正在执行的异步请求数小于maxRequests，并且最大的相同域名的请求数小于maxRequestsPerHost，
+
+在Dispatcher里面有几个成员变量如下：
 ```
   private int maxRequests = 64;//最大请求书
   private int maxRequestsPerHost = 5;//每个主机名的最大请求数

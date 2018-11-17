@@ -4,8 +4,10 @@ import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 
+import java.io.File;
 import java.io.IOException;
 
+import okhttp3.Cache;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
@@ -41,7 +43,9 @@ public class MainActivity extends AppCompatActivity {
      * OkHttp异步请求
      */
     public void asynRequest(){
-        OkHttpClient client=new OkHttpClient.Builder().build();
+        OkHttpClient client=new OkHttpClient.Builder()
+                .cache(new Cache(new File("cache"),24*1024*1024))
+                .build();
         Request request = new Request.Builder().url("http://www.baidu.com").get().build();
         Call call = client.newCall(request);
         try{

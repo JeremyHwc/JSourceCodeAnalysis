@@ -525,7 +525,14 @@ BridgeInterceptor的intercept方法如下：
 - 将这个符合网络请求的Request进行网络请求
 - 将网络请求回来的响应Response转化为用户可用的response,包括gzip解压
 
-
+#### OkHttp缓存策略分析
+OkHttp设置缓存
+```
+OkHttpClient client=new OkHttpClient.Builder()
+                .cache(new Cache(new File("cache"),24*1024*1024))
+                .build();
+```
+其中cache的参数是一个cache目录及其大小
 
 
 

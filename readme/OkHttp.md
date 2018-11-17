@@ -242,6 +242,7 @@ void enqueue(AsyncCall call) {
     
 #### OkHttp拦截器
 OkHttp拦截器是OkHttp中提供一种强大机制，他可以实现网络监听、请求以及响应重写、请求失败重试等功能
-
+![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-okhttp/images/OkHttp%E6%8B%A6%E6%88%AA%E5%99%A81.jpg)
+![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-okhttp/images/OkHttp%E6%8B%A6%E6%88%AA%E5%99%A82.jpg)
 
     

@@ -1,6 +1,4 @@
-# OkHttp源码分析
-
-## 一、OkHttp流程
+## OkHttp源码分析
 
 ### 涉及内容
 OkHttpClient     
@@ -155,6 +153,51 @@ void enqueue(AsyncCall call) {
 ```
 从promoteAndExecute方法的注释可以看出，从readyAsyncCalls集合里面挑出符合条件的加入到runningAsyncCalls，
 这里的条件就是正在执行的异步请求数小于maxRequests，并且最大的相同域名的请求数小于maxRequestsPerHost，
+线程池中执行的AsyncCall继承自NamedRunnable，在NamedRunnable里面的run()方法，仅仅是做了简单的封装，调用
+子类的execute()方法
+```
+@Override public final void run() {
+    String oldName = Thread.currentThread().getName();
+    Thread.currentThread().setName(name);
+    try {
+      execute();
+    } finally {
+      Thread.currentThread().setName(oldName);
+    }
+  }
+```
+所以我们直接看AsyncCall的execute()方法
+```
+@Override protected void execute() {
+      boolean signalledCallback = false;
+      timeout.enter();
+      try {
+        Response response = getResponseWithInterceptorChain();//这个在后面会讲，OkHttp请求流程就靠这个
+        //从下面的代码可以看出，CallBack的onFailure和onResponse是在子线程当中调用的，所以我们如果有
+        //更新UI等操作，一定记住要切换到主线程
+        if (retryAndFollowUpInterceptor.isCanceled()) {
+          signalledCallback = true;
+          responseCallback.onFailure(RealCall.this, new IOException("Canceled"));
+        } else {
+          signalledCallback = true;
+          responseCallback.onResponse(RealCall.this, response);
+        }
+      } catch (IOException e) {
+        e = timeoutExit(e);
+        if (signalledCallback) {
+          // Do not signal the callback twice!
+          Platform.get().log(INFO, "Callback failure for " + toLoggableString(), e);
+        } else {
+          eventListener.callFailed(RealCall.this, e);
+          responseCallback.onFailure(RealCall.this, e);
+        }
+      } finally {
+      //将已经执行的call从runningAsyncCalls中移除，并再次调用promoteAndExecute(),执行readyAsyncCalls
+      //里面的Call,readyAsyncCalls没有请求任务，就会idleCallback的run方法
+        client.dispatcher().finished(this);
+      }
+    }
+```
 
 在Dispatcher里面有几个成员变量如下：
 ```
@@ -188,6 +231,17 @@ void enqueue(AsyncCall call) {
 - 发起请求的方法调用
 - 阻塞线程与否
 
+#### OkHttp的任务调度（Dispatcher）
+疑问1：OkHttp如何实现同步异步请求？
+解疑：发送的同步/异步请求都会在dispatcher中管理其状态
+疑问2：到底什么是dispatcher
+解疑：dispatcher的作用为维护请求的状态，并维护一个线程池，用于执行请求
+疑问3：异步请求为什么需要两个队列？readyAsyncCalls和runningAsyncCalls
+解疑：Dispatcher可以看做是生产者，ExecutorService看做消费者池，那么readyAsyncCalls就是生产者生产的，
+      用于缓存，runningAsyncCalls就是消费者正在消费的仓库
+    
+#### OkHttp拦截器
+OkHttp拦截器是OkHttp中提供一种强大机制，他可以实现网络监听、请求以及响应重写、请求失败重试等功能
 
 
     

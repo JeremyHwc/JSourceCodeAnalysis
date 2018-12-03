@@ -17,7 +17,7 @@
         其内部通过获取到一个无界面的fragment添加到activity，glide无法监听到activity的生命周期，只能通过fragment来监听，从而完成绑定activity
         生命周期，来选择图片加载的过程
         
-        with方法是为了获取到RequestManager对象
+        with方法是为了获取到RequestManager对象,管理我们的图片请求流程
         
     load(String url)
         这个方法返回DrawableTypeRequest，这个对象代表着所有Glide中加载图片的所有request请求;

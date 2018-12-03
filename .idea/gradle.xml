@@ -10,6 +10,7 @@
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/app" />
             <option value="$PROJECT_DIR$/demo-dagger2" />
+            <option value="$PROJECT_DIR$/demo-disklrucache" />
             <option value="$PROJECT_DIR$/demo-glide" />
             <option value="$PROJECT_DIR$/demo-okhttp" />
           </set>

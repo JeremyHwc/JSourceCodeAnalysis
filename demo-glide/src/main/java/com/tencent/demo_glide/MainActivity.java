@@ -21,7 +21,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void loadImage(ImageView view,String url){
-        Glide.with(getApplicationContext())//指定Context
+        Glide.with(getApplicationContext())//指定Context，决定整个图片加载流程的生命周期
                 .load(url)//指定图片的URL
                 .placeholder(R.mipmap.ic_launcher)//指定图片未成功加载前显示的图片，本地资源
                 .error(R.mipmap.ic_launcher)//指定图片的尺寸

@@ -534,6 +534,8 @@ OkHttpClient client=new OkHttpClient.Builder()
 ```
 其中cache的参数是一个cache目录及其大小
 
+OkHttp内部维持一个清理的线程池，用这个线程池来实现对缓存文件的自动清理和管理工作
+
 
 
 

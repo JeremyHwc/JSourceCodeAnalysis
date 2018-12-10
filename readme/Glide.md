@@ -22,6 +22,7 @@
     load(String url)
         这个方法返回DrawableTypeRequest，这个对象代表着所有Glide中加载图片的所有request请求;
         这个方法其实都是做的一些初始化工作，返回一个DrawableTypeRequest对象
+
     RequestManager作用：
         （1）管理我们的请求
         （2）完成Glide对象的构造，控制glide请求过程中的各种方法

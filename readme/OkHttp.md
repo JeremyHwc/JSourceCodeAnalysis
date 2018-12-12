@@ -536,6 +536,122 @@ OkHttpClient client=new OkHttpClient.Builder()
 
 OkHttp内部维持一个清理的线程池，用这个线程池来实现对缓存文件的自动清理和管理工作
 
+```
+if (!requestMethod.equals("GET")) {
+      // Don't cache non-GET responses. We're technically allowed to cache
+      // HEAD requests and some POST requests, but the complexity of doing
+      // so is high and the benefit is low.
+      return null;
+}
+```
+通过以上的代码块可以看出，OkHttp不会缓存非GET方式的请求数据
+```
+final InternalCache internalCache = new InternalCache() {
+    //从缓存当中获取缓存
+    @Override public Response get(Request request) throws IOException {
+      return Cache.this.get(request);
+    }
+
+    //对数据进行缓存
+    @Override public CacheRequest put(Response response) throws IOException {
+      return Cache.this.put(response);
+    }
+    
+    //移除缓存
+    @Override public void remove(Request request) throws IOException {
+      Cache.this.remove(request);
+    }
+    
+    //更新缓存
+    @Override public void update(Response cached, Response network) {
+      Cache.this.update(cached, network);
+    }
+
+    @Override public void trackConditionalCacheHit() {
+      Cache.this.trackConditionalCacheHit();
+    }
+
+    @Override public void trackResponse(CacheStrategy cacheStrategy) {
+      Cache.this.trackResponse(cacheStrategy);
+    }
+  };
+```
+
+##### Cache的put方法分析
+```
+@Nullable CacheRequest put(Response response) {
+    String requestMethod = response.request().method();
+
+    if (HttpMethod.invalidatesCache(response.request().method())) {
+      try {
+        remove(response.request());
+      } catch (IOException ignored) {
+        // The cache cannot be written.
+      }
+      return null;
+    }
+    if (!requestMethod.equals("GET")) {
+      // Don't cache non-GET responses. We're technically allowed to cache
+      // HEAD requests and some POST requests, but the complexity of doing
+      // so is high and the benefit is low.
+      return null;
+    }
+
+    if (HttpHeaders.hasVaryAll(response)) {
+      return null;
+    }
+
+    Entry entry = new Entry(response);
+    DiskLruCache.Editor editor = null;
+    try {
+      editor = cache.edit(key(response.request().url()));
+      if (editor == null) {
+        return null;
+      }
+      entry.writeTo(editor);
+      return new CacheRequestImpl(editor);
+    } catch (IOException e) {
+      abortQuietly(editor);
+      return null;
+    }
+  }
+```
+##### Cache的get方法分析
+```
+@Nullable Response get(Request request) {
+    String key = key(request.url());//更具url获取缓存的key值
+    DiskLruCache.Snapshot snapshot;
+    Entry entry;
+    try {
+      snapshot = cache.get(key);
+      if (snapshot == null) {
+        return null;
+      }
+    } catch (IOException e) {
+      // Give up because the cache cannot be read.
+      return null;
+    }
+
+    try {
+      entry = new Entry(snapshot.getSource(ENTRY_METADATA));
+    } catch (IOException e) {
+      Util.closeQuietly(snapshot);
+      return null;
+    }
+
+    Response response = entry.response(snapshot);
+
+    if (!entry.matches(request, response)) {
+      Util.closeQuietly(response.body());
+      return null;
+    }
+
+    return response;
+  }
+```
+
+#### CacheInterceptor解析
+
 
 
 

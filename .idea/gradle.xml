@@ -11,8 +11,10 @@
             <option value="$PROJECT_DIR$/app" />
             <option value="$PROJECT_DIR$/demo-dagger2" />
             <option value="$PROJECT_DIR$/demo-disklrucache" />
+            <option value="$PROJECT_DIR$/demo-four-components" />
             <option value="$PROJECT_DIR$/demo-glide" />
             <option value="$PROJECT_DIR$/demo-okhttp" />
+            <option value="$PROJECT_DIR$/demo-retrofit" />
           </set>
         </option>
         <option name="resolveModulePerSourceSet" value="false" />

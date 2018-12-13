@@ -1255,6 +1255,133 @@ private final Runnable cleanupRunnable = new Runnable() {
   }
 ```
 
+总结：
+1. 产生一个StreamAllocation对象
+2. StreamAllocation对象的弱引用添加到RealConnection对象的allocations集合
+3. 从连接池中获取
+4. OkHttp使用了GC回收算法
+5. StreamAllocation的数量会渐渐变成0
+6.倍线程池检测到并回收，这样就可以保持多个健康的keep-alive连接
+
+在ConnectInterceptor拦截器里面已经成功连接到服务器。
+
+#### CallServerInterceptor解析
+
+作用：发送请求，读取响应
+```
+@Override public Response intercept(Chain chain) throws IOException {
+    RealInterceptorChain realChain = (RealInterceptorChain) chain;
+    HttpCodec httpCodec = realChain.httpStream();
+    StreamAllocation streamAllocation = realChain.streamAllocation();
+    RealConnection connection = (RealConnection) realChain.connection();
+    Request request = realChain.request();
+
+    long sentRequestMillis = System.currentTimeMillis();
+
+    realChain.eventListener().requestHeadersStart(realChain.call());
+    //通过HttpCodec写入请求头
+    httpCodec.writeRequestHeaders(request);
+    realChain.eventListener().requestHeadersEnd(realChain.call(), request);
+
+    Response.Builder responseBuilder = null;
+    if (HttpMethod.permitsRequestBody(request.method()) && request.body() != null) {
+      // If there's a "Expect: 100-continue" header on the request, wait for a "HTTP/1.1 100
+      // Continue" response before transmitting the request body. If we don't get that, return
+      // what we did get (such as a 4xx response) without ever transmitting the request body.
+      if ("100-continue".equalsIgnoreCase(request.header("Expect"))) {
+        httpCodec.flushRequest();
+        realChain.eventListener().responseHeadersStart(realChain.call());
+        responseBuilder = httpCodec.readResponseHeaders(true);
+      }
+
+      if (responseBuilder == null) {
+        // Write the request body if the "Expect: 100-continue" expectation was met.
+        realChain.eventListener().requestBodyStart(realChain.call());
+        long contentLength = request.body().contentLength();
+        //通过HttpCodec写入请求体
+        CountingSink requestBodyOut = new CountingSink(httpCodec.createRequestBody(request, contentLength));
+        BufferedSink bufferedRequestBody = Okio.buffer(requestBodyOut);
+
+        request.body().writeTo(bufferedRequestBody);
+        bufferedRequestBody.close();
+        realChain.eventListener()
+            .requestBodyEnd(realChain.call(), requestBodyOut.successfulCount);
+      } else if (!connection.isMultiplexed()) {
+        // If the "Expect: 100-continue" expectation wasn't met, prevent the HTTP/1 connection
+        // from being reused. Otherwise we're still obligated to transmit the request body to
+        // leave the connection in a consistent state.
+        streamAllocation.noNewStreams();
+      }
+    }
+    //请求编码完毕，表示整个网络请求的写入工作已经完成
+    httpCodec.finishRequest();
+
+    if (responseBuilder == null) {
+      realChain.eventListener().responseHeadersStart(realChain.call());
+      //通过HttpCodec读取网络请求的响应头信息
+      responseBuilder = httpCodec.readResponseHeaders(false);
+    }
+
+    Response response = responseBuilder
+        .request(request)
+        .handshake(streamAllocation.connection().handshake())
+        .sentRequestAtMillis(sentRequestMillis)
+        .receivedResponseAtMillis(System.currentTimeMillis())
+        .build();
+
+    int code = response.code();
+    if (code == 100) {
+      // server sent a 100-continue even though we did not request one.
+      // try again to read the actual response
+      responseBuilder = httpCodec.readResponseHeaders(false);
+
+      response = responseBuilder
+              .request(request)
+              .handshake(streamAllocation.connection().handshake())
+              .sentRequestAtMillis(sentRequestMillis)
+              .receivedResponseAtMillis(System.currentTimeMillis())
+              .build();
+
+      code = response.code();
+    }
+
+    realChain.eventListener()
+            .responseHeadersEnd(realChain.call(), response);
+
+    if (forWebSocket && code == 101) {
+      // Connection is upgrading, but we need to ensure interceptors see a non-null response body.
+      response = response.newBuilder()
+          .body(Util.EMPTY_RESPONSE)
+          .build();
+    } else {
+      response = response.newBuilder()
+          //通过HttpCodec读取响应体信息
+          .body(httpCodec.openResponseBody(response))
+          .build();
+    }
+
+    if ("close".equalsIgnoreCase(response.request().header("Connection"))
+        || "close".equalsIgnoreCase(response.header("Connection"))) {
+      streamAllocation.noNewStreams();
+    }
+
+    if ((code == 204 || code == 205) && response.body().contentLength() > 0) {
+      throw new ProtocolException(
+          "HTTP " + code + " had non-zero Content-Length: " + response.body().contentLength());
+    }
+
+    return response;
+  }
+```
+
+#### OkHttp一次网络请求的大致过程
+1. Call对象请求的封装
+2. Dispatcher对请求的分发
+3. getResponseWithInterceptors()方法
+
+## 参考文章
+**[OKHttp源码解析](https://www.jianshu.com/p/82f74db14a18)**
+
 
 
 

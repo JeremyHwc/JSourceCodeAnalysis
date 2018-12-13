@@ -784,12 +784,477 @@ final InternalCache internalCache = new InternalCache() {
 
     // We need the network to satisfy this request. Possibly for validating a conditional GET.
     boolean doExtensiveHealthChecks = !request.method().equals("GET");
+    //HttpCodec用于编码Request 和 解码Response
     HttpCodec httpCodec = streamAllocation.newStream(client, chain, doExtensiveHealthChecks);
+    //RealConnection用于实际的网络io传输，
     RealConnection connection = streamAllocation.connection();
 
     return realChain.proceed(request, streamAllocation, httpCodec, connection);
   }
 ```
+总结：
+1. ConnectInterceptor获取Interceptor传过来的StreamAllocation,streamAllocation.newStream()得到HttpCodec；
+2. 将刚才创建的用于网络IO得RealConnection对象，以及对于与服务器交互最为关键的HttpCodec等对象传递给后面的拦截器。
+
+以下分析以下上端代码中的StreamAllocation的newStream(client, chain, doExtensiveHealthChecks)方法
+```
+public HttpCodec newStream(OkHttpClient client, Interceptor.Chain chain, boolean doExtensiveHealthChecks) {
+    int connectTimeout = chain.connectTimeoutMillis();
+    int readTimeout = chain.readTimeoutMillis();
+    int writeTimeout = chain.writeTimeoutMillis();
+    int pingIntervalMillis = client.pingIntervalMillis();
+    boolean connectionRetryEnabled = client.retryOnConnectionFailure();
+
+    try {
+      RealConnection resultConnection = findHealthyConnection(connectTimeout, readTimeout,
+          writeTimeout, pingIntervalMillis, connectionRetryEnabled, doExtensiveHealthChecks);//再分析该方法
+      HttpCodec resultCodec = resultConnection.newCodec(client, chain, this);
+
+      synchronized (connectionPool) {
+        codec = resultCodec;
+        return resultCodec;
+      }
+    } catch (IOException e) {
+      throw new RouteException(e);
+    }
+  }
+  
+  /**
+     * Finds a connection and returns it if it is healthy. If it is unhealthy the process is repeated
+     * until a healthy connection is found.
+     * 以上的意思就是说寻找一个健康的RealConnection，其实就是从conectionPool里面去寻找
+     */
+    private RealConnection findHealthyConnection(int connectTimeout, int readTimeout,
+        int writeTimeout, int pingIntervalMillis, boolean connectionRetryEnabled,
+        boolean doExtensiveHealthChecks) throws IOException {
+      while (true) {
+        RealConnection candidate = findConnection(connectTimeout, readTimeout, writeTimeout,
+            pingIntervalMillis, connectionRetryEnabled);//以下在对findConnection进行分析
+  
+        // If this is a brand new connection, we can skip the extensive health checks.
+        synchronized (connectionPool) {
+          if (candidate.successCount == 0) {
+            return candidate;
+          }
+        }
+  
+        // Do a (potentially slow) check to confirm that the pooled connection is still good. If it
+        // isn't, take it out of the pool and start again.
+        if (!candidate.isHealthy(doExtensiveHealthChecks)) {
+          noNewStreams();
+          continue;
+        }
+  
+        return candidate;
+      }
+    }
+    
+    private RealConnection findConnection(int connectTimeout, int readTimeout, int writeTimeout,
+          int pingIntervalMillis, boolean connectionRetryEnabled) throws IOException {
+        boolean foundPooledConnection = false;
+        RealConnection result = null;
+        Route selectedRoute = null;
+        Connection releasedConnection;
+        Socket toClose;
+        synchronized (connectionPool) {
+          if (released) throw new IllegalStateException("released");
+          if (codec != null) throw new IllegalStateException("codec != null");
+          if (canceled) throw new IOException("Canceled");
+    
+          // Attempt to use an already-allocated connection. We need to be careful here because our
+          // already-allocated connection may have been restricted from creating new streams.
+          //尝试去使用一个已经分配的连接，也就是复用连接，这里需要注意的是，已经分配的连接可能被限制去创建新的流
+          releasedConnection = this.connection;
+          toClose = releaseIfNoNewStreams();
+          if (this.connection != null) {
+            // We had an already-allocated connection and it's good.
+            result = this.connection;
+            releasedConnection = null;
+          }
+          if (!reportedAcquired) {
+            // If the connection was never reported acquired, don't report it as released!
+            releasedConnection = null;
+          }
+    
+          if (result == null) {
+            // Attempt to get a connection from the pool.
+            // 从连接池里面获取RealConnection
+            Internal.instance.get(connectionPool, address, this, null);
+            if (connection != null) {
+              foundPooledConnection = true;
+              result = connection;
+            } else {
+              selectedRoute = route;
+            }
+          }
+        }
+        closeQuietly(toClose);
+    
+        if (releasedConnection != null) {
+          eventListener.connectionReleased(call, releasedConnection);
+        }
+        if (foundPooledConnection) {
+          eventListener.connectionAcquired(call, result);
+        }
+        if (result != null) {
+          // If we found an already-allocated or pooled connection, we're done.
+          return result;
+        }
+    
+        // If we need a route selection, make one. This is a blocking operation.
+        boolean newRouteSelection = false;
+        if (selectedRoute == null && (routeSelection == null || !routeSelection.hasNext())) {
+          newRouteSelection = true;
+          routeSelection = routeSelector.next();
+        }
+    
+        synchronized (connectionPool) {
+          if (canceled) throw new IOException("Canceled");
+    
+          if (newRouteSelection) {
+            // Now that we have a set of IP addresses, make another attempt at getting a connection from
+            // the pool. This could match due to connection coalescing.
+            List<Route> routes = routeSelection.getAll();
+            for (int i = 0, size = routes.size(); i < size; i++) {
+              Route route = routes.get(i);
+              Internal.instance.get(connectionPool, address, this, route);
+              if (connection != null) {
+                foundPooledConnection = true;
+                result = connection;
+                this.route = route;
+                break;
+              }
+            }
+          }
+    
+          if (!foundPooledConnection) {
+            if (selectedRoute == null) {
+              selectedRoute = routeSelection.next();
+            }
+    
+            // Create a connection and assign it to this allocation immediately. This makes it possible
+            // for an asynchronous cancel() to interrupt the handshake we're about to do.
+            route = selectedRoute;
+            refusedStreamCount = 0;
+            result = new RealConnection(connectionPool, selectedRoute);
+            acquire(result, false);
+          }
+        }
+    
+        // If we found a pooled connection on the 2nd time around, we're done.
+        if (foundPooledConnection) {
+          eventListener.connectionAcquired(call, result);
+          return result;
+        }
+    
+        // Do TCP + TLS handshakes. This is a blocking operation.
+        // TCP,TLS握手，这是一个阻塞操作，做实际的网络连接，以下针对该方法进行分析
+        result.connect(connectTimeout, readTimeout, writeTimeout, pingIntervalMillis,
+            connectionRetryEnabled, call, eventListener);
+        routeDatabase().connected(result.route());
+    
+        Socket socket = null;
+        synchronized (connectionPool) {
+          reportedAcquired = true;
+    
+          // Pool the connection.
+          // 将连接成功后的RealConnection放入连接池ConnectionPool中
+          Internal.instance.put(connectionPool, result);
+    
+          // If another multiplexed connection to the same address was created concurrently, then
+          // release this connection and acquire that one.
+          if (result.isMultiplexed()) {
+            socket = Internal.instance.deduplicate(connectionPool, address, this);
+            result = connection;
+          }
+        }
+        closeQuietly(socket);
+    
+        eventListener.connectionAcquired(call, result);
+        return result;
+      }
+  
+  
+  public void connect(int connectTimeout, int readTimeout, int writeTimeout,
+        int pingIntervalMillis, boolean connectionRetryEnabled, Call call,
+        EventListener eventListener) {
+        //验证连接是否已经建立，已经建立，就抛出异常
+      if (protocol != null) throw new IllegalStateException("already connected");
+  
+      RouteException routeException = null;
+      List<ConnectionSpec> connectionSpecs = route.address().connectionSpecs();
+      ConnectionSpecSelector connectionSpecSelector = new ConnectionSpecSelector(connectionSpecs);
+  
+      if (route.address().sslSocketFactory() == null) {
+        if (!connectionSpecs.contains(ConnectionSpec.CLEARTEXT)) {
+          throw new RouteException(new UnknownServiceException(
+              "CLEARTEXT communication not enabled for client"));
+        }
+        String host = route.address().url().host();
+        if (!Platform.get().isCleartextTrafficPermitted(host)) {
+          throw new RouteException(new UnknownServiceException(
+              "CLEARTEXT communication to " + host + " not permitted by network security policy"));
+        }
+      } else {
+        if (route.address().protocols().contains(Protocol.H2_PRIOR_KNOWLEDGE)) {
+          throw new RouteException(new UnknownServiceException(
+              "H2_PRIOR_KNOWLEDGE cannot be used with HTTPS"));
+        }
+      }
+  
+      while (true) {
+        try {
+          //是否需要建立tunnel，内部进行的判断是address.sslSocketFactory != null && proxy.type() == Proxy.Type.HTTP
+          if (route.requiresTunnel()) {
+            //该方法可以完成在代理通道上构建HTTPS连接的所有工作。这里的问题是代理服务器可以发出身份
+            //验证挑战，然后关闭连接。
+            connectTunnel(connectTimeout, readTimeout, writeTimeout, call, eventListener);
+            if (rawSocket == null) {
+              // We were unable to connect the tunnel but properly closed down our resources.
+              break;
+            }
+          } else {
+            connectSocket(connectTimeout, readTimeout, call, eventListener);
+          }
+          establishProtocol(connectionSpecSelector, pingIntervalMillis, call, eventListener);
+          eventListener.connectEnd(call, route.socketAddress(), route.proxy(), protocol);
+          break;
+        } catch (IOException e) {
+          closeQuietly(socket);
+          closeQuietly(rawSocket);
+          socket = null;
+          rawSocket = null;
+          source = null;
+          sink = null;
+          handshake = null;
+          protocol = null;
+          http2Connection = null;
+  
+          eventListener.connectFailed(call, route.socketAddress(), route.proxy(), null, e);
+  
+          if (routeException == null) {
+            routeException = new RouteException(e);
+          } else {
+            routeException.addConnectException(e);
+          }
+  
+          if (!connectionRetryEnabled || !connectionSpecSelector.connectionFailed(e)) {
+            throw routeException;
+          }
+        }
+      }
+  
+      if (route.requiresTunnel() && rawSocket == null) {
+        ProtocolException exception = new ProtocolException("Too many tunnel connections attempted: "
+            + MAX_TUNNEL_ATTEMPTS);
+        throw new RouteException(exception);
+      }
+  
+      if (http2Connection != null) {
+        synchronized (connectionPool) {
+          allocationLimit = http2Connection.maxConcurrentStreams();
+        }
+      }
+    }
+```
+
+总结以上调用流程：
+* 弄一个RealConnection对象
+* 根据是否需要隧道连接，选择不同连接方式，一种是隧道连接，一种是原始的socket连接
+* CallServerInterceptor
+
+##### ConnectionPool解析
+```
+Manages reuse of HTTP and HTTP/2 connections for reduced network latency. HTTP requests that
+share the same {@link Address} may share a {@link Connection}. This class implements the policy
+of which connections to keep open for future use.
+```
+以上这部分大致意思就是：
+    对HTTP和HTTP/2的连接进行管理复用，以便减少网络请求的延迟。那些共用同一个Address的Http 请求，
+    可以共用一个连接。ConnectionPool这个类实现了保持那些Connection 为open状态，以便未来复用。
+    
+```
+//这是一个用于清楚过期链接的线程池，每个线程池最多只能运行一个线程，并且这个线程池允许被垃圾回收
+private static final Executor executor = new ThreadPoolExecutor(0 /* corePoolSize */,
+      Integer.MAX_VALUE /* maximumPoolSize */, 60L /* keepAliveTime */, TimeUnit.SECONDS,
+      new SynchronousQueue<Runnable>(), Util.threadFactory("OkHttp ConnectionPool", true));
+
+  /** The maximum number of idle connections for each address. */
+  //每个address的最大空闲连接数。
+  private final int maxIdleConnections;
+  private final long keepAliveDurationNs;
+  //清理任务
+  private final Runnable cleanupRunnable = new Runnable() {
+    @Override public void run() {
+      while (true) {
+        //调用cleanup方法执行清理，并等待一段时间，持续清理，其中cleanup方法返回的值来来决定而等待的时间长度
+        long waitNanos = cleanup(System.nanoTime());
+        if (waitNanos == -1) return;
+        if (waitNanos > 0) {
+          long waitMillis = waitNanos / 1000000L;
+          waitNanos -= (waitMillis * 1000000L);
+          synchronized (ConnectionPool.this) {
+            try {
+              ConnectionPool.this.wait(waitMillis, (int) waitNanos);
+            } catch (InterruptedException ignored) {
+            }
+          }
+        }
+      }
+    }
+  };
+  //链接的双向队列
+  private final Deque<RealConnection> connections = new ArrayDeque<>();
+  //路由的数据库,用来记录不可用的route
+  final RouteDatabase routeDatabase = new RouteDatabase();
+  //清理任务正在执行的标志
+  boolean cleanupRunning;
+  
+  //创建一个适用于单个应用程序的新连接池。
+  //该连接池的参数将在未来的okhttp中发生改变
+  //目前最多可容乃5个空闲的连接，存活期是5分钟
+  public ConnectionPool() {
+      this(5, 5, TimeUnit.MINUTES);
+    }
+    
+```
+
+```
+public ConnectionPool(int maxIdleConnections, long keepAliveDuration, TimeUnit timeUnit) {
+      this.maxIdleConnections = maxIdleConnections;
+      this.keepAliveDurationNs = timeUnit.toNanos(keepAliveDuration);
+    
+      // Put a floor on the keep alive duration, otherwise cleanup will spin loop.
+      //保持活着的时间，否则清理将旋转循环
+      if (keepAliveDuration <= 0) {
+        throw new IllegalArgumentException("keepAliveDuration <= 0: " + keepAliveDuration);
+      }
+}
+```
+```
+    /**
+     * Returns a recycled connection to {@code address}, or null if no such connection exists. The
+     * route is null if the address has not yet been routed.
+     */
+    @Nullable RealConnection get(Address address, StreamAllocation streamAllocation, Route route) {
+      //判断线程是不是被自己锁住了
+      assert (Thread.holdsLock(this));
+      // 遍历已有连接集合
+      for (RealConnection connection : connections) {
+       //如果connection和需求中的"地址"和"路由"匹配
+        if (connection.isEligible(address, route)) {
+        //复用这个连接
+          streamAllocation.acquire(connection, true);
+          //返回这个连接
+          return connection;
+        }
+      }
+      return null;
+    }
+```
+
+```
+/**
+*异步触发清理任务，然后将连接添加到队列中
+*/
+void put(RealConnection connection) {
+    assert (Thread.holdsLock(this));
+    if (!cleanupRunning) {
+      cleanupRunning = true;
+      executor.execute(cleanupRunnable);
+    }
+    connections.add(connection);
+  }
+```
+
+```
+private final Runnable cleanupRunnable = new Runnable() {
+    @Override public void run() {
+      while (true) {
+        //调用cleanup方法执行清理，并等待一段时间，持续清理，其中cleanup方法返回的值来来决定而等待的时间长度
+        long waitNanos = cleanup(System.nanoTime());
+        if (waitNanos == -1) return;
+        if (waitNanos > 0) {
+          long waitMillis = waitNanos / 1000000L;
+          waitNanos -= (waitMillis * 1000000L);
+          synchronized (ConnectionPool.this) {
+            try {
+              ConnectionPool.this.wait(waitMillis, (int) waitNanos);
+            } catch (InterruptedException ignored) {
+            }
+          }
+        }
+      }
+    }
+  };
+```
+
+```
+  /**
+   * Performs maintenance on this pool, evicting the connection that has been idle the longest if
+   * either it has exceeded the keep alive limit or the idle connections limit.
+   *
+   * <p>Returns the duration in nanos to sleep until the next scheduled call to this method. Returns
+   * -1 if no further cleanups are required.
+   */
+  long cleanup(long now) {
+    int inUseConnectionCount = 0;
+    int idleConnectionCount = 0;
+    RealConnection longestIdleConnection = null;
+    long longestIdleDurationNs = Long.MIN_VALUE;
+
+    // Find either a connection to evict, or the time that the next eviction is due.
+    // 找到即将被清理的 连接 或者下一次清理的 时间
+    synchronized (this) {
+      //iterator返回connections队列的RealConnection，顺序为队头到队尾
+      for (Iterator<RealConnection> i = connections.iterator(); i.hasNext(); ) {
+        RealConnection connection = i.next();
+
+        // If the connection is in use, keep searching.
+        //使用中的连接，则找一下个Connection
+        if (pruneAndGetAllocationCount(connection, now) > 0) {
+          inUseConnectionCount++;
+          continue;
+        }
+        //空闲连接数
+        idleConnectionCount++;
+
+        // If the connection is ready to be evicted, we're done.
+        //该Connection空闲的总时间
+        long idleDurationNs = now - connection.idleAtNanos;
+        //找出空闲时间最长的连接以及对应的空闲时间
+        if (idleDurationNs > longestIdleDurationNs) {
+          longestIdleDurationNs = idleDurationNs;
+          longestIdleConnection = connection;
+        }
+      }
+
+      if (longestIdleDurationNs >= this.keepAliveDurationNs || idleConnectionCount > this.maxIdleConnections) {
+        // We've found a connection to evict. Remove it from the list, then close it below (outside of the synchronized block).
+        //在符合清理条件下，清理空闲时间最长的连接
+        connections.remove(longestIdleConnection);
+      } else if (idleConnectionCount > 0) {
+        // A connection will be ready to evict soon.
+        //不符合清理条件，则返回下次需要执行清理的等待时间，也就是此连接即将到期的时间
+        return keepAliveDurationNs - longestIdleDurationNs;
+      } else if (inUseConnectionCount > 0) {
+        // All connections are in use. It'll be at least the keep alive duration 'til we run again.
+        //没有空闲的连接，则隔keepAliveDuration(分钟)之后再次执行
+        return keepAliveDurationNs;
+      } else {
+        // No connections, idle or in use.
+        //清理结束
+        cleanupRunning = false;
+      }
+    }
+
+    closeQuietly(longestIdleConnection.socket());
+
+    // Cleanup again immediately.
+    return 0;
+  }
+```
+
 
 
 

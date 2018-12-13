@@ -7,6 +7,29 @@ RealCall
 Dispatcher      
 Intercepters:
     包括RetryAndFollowIntercepter,BridgeIntercepter,CacheIntercepter,ConnectIntercepter,CallServerInterceper
+    
+以上的这部分内容可以从OkHttp的这段源码中getResponseWithInterceptorChain方法中得出：
+```
+Response getResponseWithInterceptorChain() throws IOException {
+    // Build a full stack of interceptors.
+    List<Interceptor> interceptors = new ArrayList<>();
+    interceptors.addAll(client.interceptors());//应用程序拦截器
+    interceptors.add(retryAndFollowUpInterceptor);
+    interceptors.add(new BridgeInterceptor(client.cookieJar()));
+    interceptors.add(new CacheInterceptor(client.internalCache()));
+    interceptors.add(new ConnectInterceptor(client));
+    if (!forWebSocket) {
+      interceptors.addAll(client.networkInterceptors());
+    }
+    interceptors.add(new CallServerInterceptor(forWebSocket));
+
+    Interceptor.Chain chain = new RealInterceptorChain(interceptors, null, null, null, 0,
+        originalRequest, this, eventListener, client.connectTimeoutMillis(),
+        client.readTimeoutMillis(), client.writeTimeoutMillis());
+
+    return chain.proceed(originalRequest);
+  }
+```
 
 #### OkHttp请求流程如下
 ![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-okhttp/images/OkHttp%E8%AF%B7%E6%B1%82%E6%B5%81%E7%A8%8B%E5%9B%BE.jpg)
@@ -651,6 +674,122 @@ final InternalCache internalCache = new InternalCache() {
 ```
 
 #### CacheInterceptor解析
+```
+ @Override public Response intercept(Chain chain) throws IOException {
+    Response cacheCandidate = cache != null
+        ? cache.get(chain.request())//获取缓存
+        : null;
+
+    long now = System.currentTimeMillis();
+
+    CacheStrategy strategy = new CacheStrategy.Factory(now, chain.request(), cacheCandidate).get();
+    Request networkRequest = strategy.networkRequest;
+    Response cacheResponse = strategy.cacheResponse;
+
+    if (cache != null) {
+      cache.trackResponse(strategy);
+    }
+
+    if (cacheCandidate != null && cacheResponse == null) {
+      closeQuietly(cacheCandidate.body()); // The cache candidate wasn't applicable. Close it.
+    }
+
+    // If we're forbidden from using the network and the cache is insufficient, fail.
+    if (networkRequest == null && cacheResponse == null) {//无网络，无缓存就构建一个504的Response返回
+      return new Response.Builder()
+          .request(chain.request())
+          .protocol(Protocol.HTTP_1_1)
+          .code(504)
+          .message("Unsatisfiable Request (only-if-cached)")
+          .body(Util.EMPTY_RESPONSE)
+          .sentRequestAtMillis(-1L)
+          .receivedResponseAtMillis(System.currentTimeMillis())
+          .build();
+    }
+
+    // If we don't need the network, we're done.
+    if (networkRequest == null) {//有缓存直接返回缓存的结果
+      return cacheResponse.newBuilder()
+          .cacheResponse(stripBody(cacheResponse))
+          .build();
+    }
+
+    Response networkResponse = null;
+    try {
+      networkResponse = chain.proceed(networkRequest);//调用拦截器的proceed方法，进行网络数据获取
+    } finally {
+      // If we're crashing on I/O or otherwise, don't leak the cache body.
+      if (networkResponse == null && cacheCandidate != null) {
+        closeQuietly(cacheCandidate.body());
+      }
+    }
+
+    // If we have a cache response too, then we're doing a conditional get.
+    if (cacheResponse != null) {//既有缓存，又有网络响应，首先做对比
+      if (networkResponse.code() == HTTP_NOT_MODIFIED) {//网络响应码为304，表示数据未变化
+        Response response = cacheResponse.newBuilder()
+            .headers(combine(cacheResponse.headers(), networkResponse.headers()))
+            .sentRequestAtMillis(networkResponse.sentRequestAtMillis())
+            .receivedResponseAtMillis(networkResponse.receivedResponseAtMillis())
+            .cacheResponse(stripBody(cacheResponse))
+            .networkResponse(stripBody(networkResponse))
+            .build();
+        networkResponse.body().close();
+
+        // Update the cache after combining headers but before stripping the
+        // Content-Encoding header (as performed by initContentStream()).
+        cache.trackConditionalCacheHit();
+        cache.update(cacheResponse, response);
+        return response;
+      } else {
+        closeQuietly(cacheResponse.body());
+      }
+    }
+
+    Response response = networkResponse.newBuilder()
+        .cacheResponse(stripBody(cacheResponse))
+        .networkResponse(stripBody(networkResponse))
+        .build();
+
+    if (cache != null) {
+      if (HttpHeaders.hasBody(response) && CacheStrategy.isCacheable(response, networkRequest)) {
+        // Offer this request to the cache.
+        CacheRequest cacheRequest = cache.put(response);
+        return cacheWritingResponse(cacheRequest, response);
+      }
+
+      if (HttpMethod.invalidatesCache(networkRequest.method())) {
+        try {
+          cache.remove(networkRequest);
+        } catch (IOException ignored) {
+          // The cache cannot be written.
+        }
+      }
+    }
+
+    return response;
+  }
+```
+
+#### ConnectInterceptor解析
+
+作用：ConnectInterceptor就是打开与服务器的连接，正式开启网络连接
+```
+  @Override public Response intercept(Chain chain) throws IOException {
+    RealInterceptorChain realChain = (RealInterceptorChain) chain;
+    Request request = realChain.request();
+    //在前面分析的RetryAndFollowUpInterceptor中创建StreamAllocation，StreamAllocation是用来建立执行
+    //http请求所需要的网络的组件，分配Stream
+    StreamAllocation streamAllocation = realChain.streamAllocation();
+
+    // We need the network to satisfy this request. Possibly for validating a conditional GET.
+    boolean doExtensiveHealthChecks = !request.method().equals("GET");
+    HttpCodec httpCodec = streamAllocation.newStream(client, chain, doExtensiveHealthChecks);
+    RealConnection connection = streamAllocation.connection();
+
+    return realChain.proceed(request, streamAllocation, httpCodec, connection);
+  }
+```
 
 
 

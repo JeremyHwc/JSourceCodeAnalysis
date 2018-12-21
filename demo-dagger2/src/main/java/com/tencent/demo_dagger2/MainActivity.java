@@ -23,7 +23,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        DaggerMainActivityComponent.builder().build().inject(this);
+        DaggerMainActivityComponent.create().inject(this);
         mWatch.work();
 
         String jsonData="{'name':'zhangwuji','age':20}";

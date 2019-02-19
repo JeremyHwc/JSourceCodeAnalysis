@@ -1,1 +1,1 @@
-include ':app', ':demo-dagger2', ':demo-glide', ':demo-okhttp', ':demo-disklrucache', ':demo-four-components', ':demo-retrofit', ':annotations', ':AnnotationProcessor', ':demo-butterknife', ':demo-eventbus'
+include ':app', ':demo-dagger2', ':demo-glide', ':demo-okhttp', ':demo-disklrucache', ':demo-four-components', ':demo-retrofit', ':annotations', ':AnnotationProcessor', ':demo-butterknife', ':demo-eventbus', ':demo-sqlite'

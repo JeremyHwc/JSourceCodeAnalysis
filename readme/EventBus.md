@@ -11,6 +11,6 @@
     
 ## 二、EventBus框架基本用法
 1. EventBus架构图
-！[](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-eventbus/pics/EventBus-Publish-Subscribe.png)
+![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-eventbus/pics/EventBus-Publish-Subscribe.png)
     
 

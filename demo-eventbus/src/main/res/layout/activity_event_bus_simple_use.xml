@@ -4,13 +4,13 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".handlerthread.HandlerSendMessageActivity1">
-
+    android:orientation="vertical"
+    tools:context=".EventBusSimpleUseActivity">
     <Button
         android:layout_width="match_parent"
         android:layout_height="50dp"
-        android:text="向子线程发送消息"
-        android:onClick="sendMsgToChild"
-        android:background="@color/colorAccent"/>
+        android:textColor="@color/colorAccent"
+        android:onClick="onSendMessage"
+        android:text="发送消息"/>
 
 </LinearLayout>

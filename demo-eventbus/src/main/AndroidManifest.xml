@@ -16,8 +16,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".HandlerSendMessageActivity1"></activity>
-        <activity android:name=".HandlerSendMessageActivity2"></activity>
+        <activity android:name=".handlerthread.HandlerSendMessageActivity1" />
+        <activity android:name=".handlerthread.HandlerSendMessageActivity2" />
+        <activity android:name=".EventBusSimpleUseActivity"></activity>
     </application>
 
 </manifest>

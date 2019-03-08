@@ -15,6 +15,44 @@
 1. EventBus架构图
 
     <img src="https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-eventbus/pics/EventBus-Publish-Subscribe.png" width ="600" height="200"/>
+    
+2. 简单使用步骤
+    （1）定义事件Event
+    （2）准备订阅者
+    （3）订阅者同时需要在总线上注册和注销自己
+    （4）发送事件
+```
+public class EventBusSimpleUseActivity extends AppCompatActivity {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_event_bus_simple_use);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        EventBus.getDefault().register(this);//注册
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        EventBus.getDefault().unregister(this);//反注册
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)//定义接收事件后的处理线程
+    public void onMessageEvent(MyBusEvent event){
+        Toast.makeText(this,event.getMessage(),Toast.LENGTH_LONG).show();
+    }
+
+    //点击事件发送事件
+    public void onSendMessage(View view) {
+        EventBus.getDefault().post(new MyBusEvent("我是来自EventBus发送的消息！"));
+    }
+}
+```    
 
     
 

@@ -1,13 +1,14 @@
-package com.tencent.demo_eventbus;
+package com.tencent.demo_eventbus.handlerthread;
 
 import android.annotation.SuppressLint;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Looper;
 import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.Toast;
+
+import com.tencent.demo_eventbus.R;
 
 public class HandlerSendMessageActivity2 extends AppCompatActivity {
     private static final String TAG = "HandlerSendMessage";

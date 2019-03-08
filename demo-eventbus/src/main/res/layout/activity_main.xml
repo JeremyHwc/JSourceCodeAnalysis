@@ -24,29 +24,10 @@
     <Button
         android:layout_width="match_parent"
         android:layout_height="50dp"
-        android:text="主线程到主线程发送事件"
-        android:onClick="onMainToMain"
-        android:textColor="@color/colorPrimaryDark"/>
+        android:text="简单使用"
+        android:onClick="onSimpleUse"
+        android:textColor="@color/colorAccent"/>
 
-    <Button
-        android:layout_width="match_parent"
-        android:layout_height="50dp"
-        android:text="主线程到子线程发送事件"
-        android:onClick="onMainToChild"
-        android:textColor="@color/colorPrimaryDark"/>
 
-    <Button
-        android:layout_width="match_parent"
-        android:layout_height="50dp"
-        android:text="子线程到主线程发送事件"
-        android:onClick="onChildToMain"
-        android:textColor="@color/colorPrimaryDark"/>
-
-    <Button
-        android:layout_width="match_parent"
-        android:layout_height="50dp"
-        android:text="子线程到子线程发送事件"
-        android:onClick="onChildToChild"
-        android:textColor="@color/colorPrimaryDark"/>
 
 </LinearLayout>

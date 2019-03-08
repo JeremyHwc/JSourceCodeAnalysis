@@ -19,6 +19,7 @@
             <option value="$PROJECT_DIR$/demo-glide" />
             <option value="$PROJECT_DIR$/demo-okhttp" />
             <option value="$PROJECT_DIR$/demo-retrofit" />
+            <option value="$PROJECT_DIR$/demo-sqlite" />
           </set>
         </option>
         <option name="resolveModulePerSourceSet" value="false" />

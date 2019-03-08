@@ -7,6 +7,7 @@
 4. Handler消息通信流程图
 
     <img src="https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-eventbus/pics/Handler%E6%B6%88%E6%81%AF%E9%80%9A%E4%BF%A1%E6%B5%81%E7%A8%8B%E5%9B%BE.png" width ="400" height="400"/>
+    
     总的来说：Handler负责消息的发送与接收处理，Handler通过sendMessage将Message加入到MessageQueue里面，
     Looper负责从MessageQueue里面不断获取Message交给handleMessage(msg)来处理
     

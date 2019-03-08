@@ -9,4 +9,6 @@
     总的来说：Handler负责消息的发送与接收处理，Handler通过sendMessage将Message加入到MessageQueue里面，
     Looper负责从MessageQueue里面不断获取Message交给handleMessage(msg)来处理
     
+## 二、EventBus框架基本用法
+    
 

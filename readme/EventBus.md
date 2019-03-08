@@ -16,7 +16,7 @@
 
     <img src="https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-eventbus/pics/EventBus-Publish-Subscribe.png" width ="600" height="200"/>
     
-2. 简单使用步骤
+2. 简单使用步骤   
     （1）定义事件Event    
     （2）准备订阅者    
     （3）订阅者同时需要在总线上注册和注销自己   

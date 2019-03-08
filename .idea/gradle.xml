@@ -11,6 +11,7 @@
             <option value="$PROJECT_DIR$/AnnotationProcessor" />
             <option value="$PROJECT_DIR$/annotations" />
             <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/demo-blockcanary" />
             <option value="$PROJECT_DIR$/demo-butterknife" />
             <option value="$PROJECT_DIR$/demo-dagger2" />
             <option value="$PROJECT_DIR$/demo-disklrucache" />

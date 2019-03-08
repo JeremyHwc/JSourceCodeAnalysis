@@ -6,6 +6,7 @@ import android.view.View;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener{
 
@@ -25,5 +26,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void onClick(View v) {
         EventBus.getDefault().post(null);
+    }
+
+    public void onMainToMain(View view) {
+        EventBus.getDefault().post(new MessageEvent("main","main"));
+    }
+
+    public void onMainToChild(View view) {
+
+    }
+
+    public void onChildToMain(View view) {
+    }
+
+    public void onChildToChild(View view) {
+
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onMessageEvent(MessageEvent event){
+
     }
 }

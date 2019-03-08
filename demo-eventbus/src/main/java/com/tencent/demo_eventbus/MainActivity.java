@@ -1,5 +1,6 @@
 package com.tencent.demo_eventbus;
 
+import android.content.Intent;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -45,6 +46,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onMessageEvent(MessageEvent event){
+
+    }
+
+    public void onChildToMainThread(View view) {
+        startActivity(new Intent(this,HandlerSendMessageActivity2.class));
+
+    }
+
+    public void onMainToChildThread(View view) {
+        startActivity(new Intent(this,HandlerSendMessageActivity1.class));
 
     }
 }

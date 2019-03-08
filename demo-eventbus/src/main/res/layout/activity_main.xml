@@ -10,6 +10,20 @@
     <Button
         android:layout_width="match_parent"
         android:layout_height="50dp"
+        android:text="主线程向子线程发送消息"
+        android:onClick="onMainToChildThread"
+        android:textColor="@color/colorPrimaryDark"/>
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="子线程向主线程发送消息"
+        android:onClick="onChildToMainThread"
+        android:textColor="@color/colorPrimaryDark"/>
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
         android:text="主线程到主线程发送事件"
         android:onClick="onMainToMain"
         android:textColor="@color/colorPrimaryDark"/>

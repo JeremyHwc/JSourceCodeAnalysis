@@ -10,5 +10,7 @@
     Looper负责从MessageQueue里面不断获取Message交给handleMessage(msg)来处理
     
 ## 二、EventBus框架基本用法
+1. EventBus架构图
+！[](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-eventbus/pics/EventBus-Publish-Subscribe.png)
     
 

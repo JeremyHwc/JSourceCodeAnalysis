@@ -208,6 +208,7 @@
     (1)ANR造成原因？
         .ANR:Application Not Responding
         .Activity Manager 和 WindowManager
+        
         .ANR分类  
             .Service TimeOut
             .BroadCast TimeOut
@@ -224,4 +225,133 @@
             .不要在BroadCastReceiver的onReceive()方法做耗时操作（如果有耗时操作直接开启一个子线程或通过IntentService来完成操作）
             .Activity的声明周期函数中都不应该有太耗时的操作
         
-## 7.BlockCanary面试二：WatchDog-anr如何监控ANR
+## 7.BlockCanary面试二：WatchDog-ANR如何监控ANR
+    (1)ANR原理
+        .创建一个检测线程；
+        .该线程不断往UI线程post一个任务；
+        .睡眠固定时间；
+        .等检测线程重新起来后检测之前post的任务是否执行了。
+
+    (2)使用
+        .implementation 'com.github.anrwatchdog:anrwatchdog:1.4.0'
+        
+## 8.BlockCanary面试三：new Thread开启线程的4个弊端
+    (1)代码
+```
+    new Thread() {
+                @Override
+                public void run() {
+                    super.run();
+                }
+            }.start();
+```
+    (2)问题
+        .多个耗时任务时就会开启多个新线程
+        .如果在线程中执行循环任务，只能通过一个Flag来控制它的停止
+        .没有线程切换的接口
+        .如果从UI线程启动，则该线程优先级默认为Default
+        .Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGOUND)
+        
+## 9.BlockCanary面试四：线程间通信：子线程-->UI线程
+    (1)多线程编程时的两大原则
+        .不要阻塞UI线程
+        .不要再UI线程之外访问UI组件
+    (2)线程通信
+        .将任务从工作线程抛到主线程
+        .将任务从主线程抛到工作线程
+        .Handler.sendMessage();
+        .Handler.post(Runnable);
+        .runOnUiThread(Runnable);注意：调用这句话的时候，如果当前线程是UI线程,那么该Runnable会被立即执行，如果调用时不时UI线程，那么Runnable不会被立即执行，而是将Runnable放进消息队列，按照一定策略来执行
+        .AsyncTask();注意：AsyncTask会默认持有外部类的引用，所以使用时记得自定义AsyncTask并申明为static，在其内部持有外部类的弱引用，防止内存泄漏
+                           AsyncTask在3.0之后执行任务是串行的，主要原因在doInBackground里面，在一个进程当中我们如果开启了多个AsyncTask线程的时候，其会使用同一个线程池去
+                           执行任务，如果在doInBackground当中需要去访问相同的资源，这时候就有可能出现数据不安全的现象。所以AsyncTask采用串行执行任务。
+                           
+               
+## 10.BlockCanary面试五：主线程--> 子线程（HandlerThread - IntentService）
+    (1)HandlerThread
+        (1.1)Thread/Runnable
+            .Runnable作为匿名内部类会持有外部类的引用
+        (1.2)HandlerThread
+            .继承了Thread
+            .有自己的内部Looper对象，通过Looper.loop()进行looper循环
+            .HandlerThread的looper对象传递给Handler对象，然后在handleMessage方法中执行异步任务
+    (2)IntentService
+        .IntentService是Service类的子类
+        .单独开启了一个线程来出来所有的Intent请求所对应的任务
+        .当IntentService处理完所有的任务后，它会在适当的时候自动结束服务
+        .IntentServie是使用HandlerThread来实现异步执行任务的
+        
+## 11.BlockCanary面试六：多进程的4点好处与问题/volatile关键字
+    (1)多进程好处
+        .解决OOM问题
+        .合理利用内存（在适当的时候生成进程，在不需要的时候杀掉进程）
+        .单一进程奔溃不会影响整体应用
+        .项目解耦、模块化开发
+        
+    (2)多进程问题
+        .Application会多次创建（根据进程名区分不同进程，进行不同的初始化，所以不要再Application当中做过多的初始化）
+        .文件读写潜在的问题（并发访问文件，包括我们的SP，本地文件，数据库文件等等，在java当中，文件锁都是基于进程，java虚拟机级别的，
+         所以从不同进程访问文件，这时候这个文件锁是不管用的，特别是SP）
+        .静态变量和单例模式完全失效
+        .线程同步机制完全失效
+        
+    (3)synchronized和volatile
+        .阻塞线程与否（volatile是告诉虚拟机当前变量在寄存器当中的值是不确定的，应该从主存中去读取，在单例当中使用很多，synchronized关键字会阻塞线程，只有获取到锁的线程可以访问，如果其他线程同时也在访问，那么其他线程将会被阻塞）
+        .使用范围（volatile只是作用在变量上面，synchronized不仅可以作用在变量上面，也可以作用于方法上）
+        .操作原子性（volatile没有原子性，而synchronized具有原子性）
+        
+## 12.BlockCanary面试七：volatile关键字和单例的写法
+```java
+public class SingletonLazy {
+    private static volatile SingletonLazy INSTANCE = null;
+
+    private SingletonLazy() {
+    }
+
+    /**
+     * 线程不安全的懒汉模式
+     */
+    public static SingletonLazy getInstance() {
+        if (INSTANCE == null) {
+            INSTANCE = new SingletonLazy();
+        }
+        return INSTANCE;
+    }
+
+    /**
+     * 线程安全的懒汉模式,但是缺点是非必要的同步
+     */
+    public static synchronized SingletonLazy getInstance1() {
+        if (INSTANCE == null) {
+            INSTANCE = new SingletonLazy();
+        }
+        return INSTANCE;
+    }
+
+    /**
+     * DCL,指令重排序
+     */
+    public static SingletonLazy getInstance2() {
+        if (INSTANCE == null) {
+            synchronized (SingletonLazy.class) {
+                if (INSTANCE == null) {
+                    INSTANCE = new SingletonLazy();
+                }
+            }
+        }
+        return INSTANCE;
+    }
+
+    /**
+     * 静态内部类
+     */
+
+    private static class SingletonLazyHolder {
+        private static final SingletonLazy sInstance = new SingletonLazy();
+    }
+
+    public static SingletonLazy getInstance3() {
+        return SingletonLazyHolder.sInstance;
+    }
+}
+```

@@ -36,7 +36,7 @@
         }
 ```
 2. 初始化
-```
+```java
     public class DemoBlockApplication extends Application {
         @Override
         public void onCreate() {

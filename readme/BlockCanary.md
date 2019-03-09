@@ -1,4 +1,4 @@
-# BlockCanary ui卡顿优化框架源码解析
+# BlockCanary UI卡顿优化框架源码解析
 
 ## 1.BlockCanary背景/UI卡顿原理/UI卡顿常见原因
 1. 背景   
@@ -24,7 +24,7 @@
     (4)View频繁的出发measure、layout
     (5)内存频繁出发GC过多，比如频繁创建临时变量（虚拟机进行GC的时候，所有的线程都会暂停，就会造成UI卡顿）
     
-## BlockCanary使用/阈值参数
+## 2.BlockCanary使用/阈值参数
 1. 添加依赖     
 ```
     dependencies {
@@ -199,9 +199,158 @@
 ```
 
 ## 3.BlockCanary核心原理实现和流程图简述
-1. 核心原理     
+1. 核心原理
     其实BlockCanary的核心实现原理离不开主线程，Android当中的主线程是ActivityThread，以及它会利用到我
     们常用的线程处理工具Handler和Looper。下面分析其源码看其是如何打印出我们所需要的信息展示给用户的。 
+```java
+    public final class ActivityThread{
+    //...........................................省略了其他的代码
+    public static void main(String[] args) {
+            Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, "ActivityThreadMain");
+            SamplingProfilerIntegration.start();
+    
+            // CloseGuard defaults to true and can be quite spammy.  We
+            // disable it here, but selectively enable it later (via
+            // StrictMode) on debug builds, but using DropBox, not logs.
+            CloseGuard.setEnabled(false);
+    
+            Environment.initForCurrentUser();
+    
+            // Set the reporter for event logging in libcore
+            EventLogger.setReporter(new EventLoggingReporter());
+    
+            // Make sure TrustedCertificateStore looks in the right place for CA certificates
+            final File configDir = Environment.getUserConfigDirectory(UserHandle.myUserId());
+            TrustedCertificateStore.setDefaultUserDirectory(configDir);
+    
+            Process.setArgV0("<pre-initialized>");
+    
+            Looper.prepareMainLooper();
+    
+            ActivityThread thread = new ActivityThread();
+            thread.attach(false);
+    
+            if (sMainThreadHandler == null) {
+                sMainThreadHandler = thread.getHandler();
+            }
+    
+            if (false) {
+                Looper.myLooper().setMessageLogging(new
+                        LogPrinter(Log.DEBUG, "ActivityThread"));
+            }
+    
+            // End of event ActivityThreadMain.
+            Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+            Looper.loop();
+    
+            throw new RuntimeException("Main thread loop unexpectedly exited");
+        }
+    }
+```
+```java
+    public final class Looper{
+    //.....................................省略其他代码
+    /**
+         * Run the message queue in this thread. Be sure to call
+         * quit() to end the loop.
+         */
+        public static void loop() {
+            final Looper me = myLooper();
+            if (me == null) {
+                throw new RuntimeException("No Looper; Looper.prepare() wasn't called on this thread.");
+            }
+            final MessageQueue queue = me.mQueue;
+    
+            // Make sure the identity of this thread is that of the local process,
+            // and keep track of what that identity token actually is.
+            Binder.clearCallingIdentity();
+            final long ident = Binder.clearCallingIdentity();
+    
+            for (;;) {
+                Message msg = queue.next(); // might block
+                if (msg == null) {
+                    // No message indicates that the message queue is quitting.
+                    return;
+                }
+    
+                // This must be in a local variable, in case a UI event sets the logger
+                final Printer logging = me.mLogging;
+                if (logging != null) {
+                    logging.println(">>>>> Dispatching to " + msg.target + " " +
+                            msg.callback + ": " + msg.what);
+                }
+    
+                final long slowDispatchThresholdMs = me.mSlowDispatchThresholdMs;
+    
+                final long traceTag = me.mTraceTag;
+                if (traceTag != 0 && Trace.isTagEnabled(traceTag)) {
+                    Trace.traceBegin(traceTag, msg.target.getTraceName(msg));
+                }
+                final long start = (slowDispatchThresholdMs == 0) ? 0 : SystemClock.uptimeMillis();
+                final long end;
+                try {
+                    msg.target.dispatchMessage(msg);
+                    end = (slowDispatchThresholdMs == 0) ? 0 : SystemClock.uptimeMillis();
+                } finally {
+                    if (traceTag != 0) {
+                        Trace.traceEnd(traceTag);
+                    }
+                }
+                if (slowDispatchThresholdMs > 0) {
+                    final long time = end - start;
+                    if (time > slowDispatchThresholdMs) {
+                        Slog.w(TAG, "Dispatch took " + time + "ms on "
+                                + Thread.currentThread().getName() + ", h=" +
+                                msg.target + " cb=" + msg.callback + " msg=" + msg.what);
+                    }
+                }
+    
+                if (logging != null) {
+                    logging.println("<<<<< Finished to " + msg.target + " " + msg.callback);
+                }
+    
+                // Make sure that during the course of dispatching the
+                // identity of the thread wasn't corrupted.
+                final long newIdent = Binder.clearCallingIdentity();
+                if (ident != newIdent) {
+                    Log.wtf(TAG, "Thread identity changed from 0x"
+                            + Long.toHexString(ident) + " to 0x"
+                            + Long.toHexString(newIdent) + " while dispatching to "
+                            + msg.target.getClass().getName() + " "
+                            + msg.callback + " what=" + msg.what);
+                }
+    
+                msg.recycleUnchecked();
+            }
+        }
+    }
+```
+可以看到，在应用程序启动过程中，ActivityThread作为程序的UI线程，在ActivityThread的main函数当中调用了Looper.loop()
+从而开启一个for(;;)进而不断从MessageQueue里面获取到msg，从而调用msg.target.dispatchMessage(msg)，其中msg.target是
+Handler,进而进入到Handler的dispatchMessage()方法，
+```java
+    public class Handler{
+    //..................................省略其他的代码
+        /**
+         * Handle system messages here.
+         */
+        public void dispatchMessage(Message msg) {
+            if (msg.callback != null) {//这里的callback其实就是runnable,
+                handleCallback(msg);
+            } else {
+                if (mCallback != null) {
+                    if (mCallback.handleMessage(msg)) {
+                        return;
+                    }
+                }
+                handleMessage(msg);//Handler处理消息，如果这个里面进行了耗时的操作，肯定就会阻塞UI线程
+            }
+        }
+    }
+```
+其中BlockCanary的原理就是在msg.target.dispatchMessage(msg)方法的上下方去分别打印方法执行的时间，然后根据上下两个
+时间差来判定dispatchMessage当中是否产生了耗时的操作，也就是dispatchMessage当中是否有UI卡顿，如果上下两个时间差大
+于了我们设定的阈值，我们就需要dump出我们所需要的导致UI卡顿的堆栈信息
 
 
 ## 6.BlockCanary面试一：ANR/原因/解决

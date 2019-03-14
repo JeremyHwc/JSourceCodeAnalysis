@@ -21,7 +21,7 @@
     （2）准备订阅者    
     （3）订阅者同时需要在总线上注册和注销自己   
     （4）发送事件 
-```
+```java
     public class EventBusSimpleUseActivity extends AppCompatActivity {
     
         @Override

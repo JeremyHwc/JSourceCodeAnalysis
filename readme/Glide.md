@@ -8,7 +8,7 @@
     （5）TranscodedResource --- 转码，glide除了能加载静态图之外，还能加载动态图，但是解码之后的bitmap和gifDrawable,其类型不是统一的，
                                 为了方便处理，glide就会把bitmap转换成glideBitmapDrawable,这样类型就统一了，负责转码的角色叫
                                 transcode,而转码之后的就叫做TranscodeResource
-    （6）将图片显示在目标上，glide将我们显示的目标封装成target
+    （6）Target --- 将图片显示在目标上，glide将我们显示的目标封装成target
     
     流程图：
         Model --ModelLoader--> Data --Decoder--> Resource --Transform--> TransformedResource --Transcode -->TranscodeResource -->Target

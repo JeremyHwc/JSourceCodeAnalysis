@@ -267,8 +267,8 @@ void enqueue(AsyncCall call) {
 OkHttp拦截器是OkHttp中提供一种强大机制，他可以实现网络监听、请求以及响应重写、请求失败重试等功能
 ![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-okhttp/images/OkHttp%E6%8B%A6%E6%88%AA%E5%99%A81.jpg) 
 ![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-okhttp/images/OkHttp%E6%8B%A6%E6%88%AA%E5%99%A82.jpg)
-从上面的图可以看出，拦截器分为Application Interceptors 、OkHttpCore提供的拦截器 以及 Network Interceptors,第二张图是OkHttp框架给
-我们提供的系统内部的拦截器。包括：
+从上面的图可以看出，拦截器分为Application Interceptors 、OkHttpCore提供的拦截器 以及 Network Interceptors,
+第二张图是OkHttp框架给我们提供的系统内部的拦截器。包括：
 - RetryAndFollowUpInterceptor：初始化工作，创建StreamAllocation对象用来传递给后面的拦截器
 - BridgeInterceptor：桥接和适配，用于补充一些Http请求当中缺少的Http的请求头
 - CacheInterceptor：处理缓存

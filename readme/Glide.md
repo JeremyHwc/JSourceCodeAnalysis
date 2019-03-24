@@ -12,6 +12,8 @@
     
     流程图：
         Model --ModelLoader--> Data --Decoder--> Resource --Transform--> TransformedResource --Transcode -->TranscodeResource -->Target
+        
+<img src="https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-glide/src/main/res/drawable/Glide%E6%B5%81%E7%A8%8B%E5%9B%BE.jpg" width ="800" height="200"/>
 
     Glide.with(Context context)
         其内部通过获取到一个无界面的fragment添加到activity，glide无法监听到activity的生命周期，只能通过fragment来监听，从而完成绑定activity

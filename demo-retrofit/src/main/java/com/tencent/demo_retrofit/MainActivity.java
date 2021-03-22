@@ -1,7 +1,8 @@
 package com.tencent.demo_retrofit;
 
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+
+import androidx.appcompat.app.AppCompatActivity;
 
 import com.tencent.demo_retrofit.dynamic_proxy.Man;
 import com.tencent.demo_retrofit.dynamic_proxy.Proxy;
@@ -24,11 +25,11 @@ public class MainActivity extends AppCompatActivity {
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-//
+
         Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl("https://api.github.com/")//设置网络请求的Url地址
-                .addConverterFactory(GsonConverterFactory.create())//设置数据解析转换器，其中GsonConverterFactory.create()就是创建了一个含有Gson对象的GsonConverterFactory
-                .addCallAdapterFactory(RxJavaCallAdapterFactory.create())//网络请求的适配器，支持RxJava平台
+                .baseUrl("https://api.github.com/")// 设置网络请求的Url地址
+                .addConverterFactory(GsonConverterFactory.create())// 设置数据解析转换器，其中GsonConverterFactory.create()就是创建了一个含有Gson对象的GsonConverterFactory
+                .addCallAdapterFactory(RxJavaCallAdapterFactory.create()) // 网络请求的适配器，支持RxJava平台
                 .build();
 
         GitHubService gitHubService = retrofit.create(GitHubService.class);

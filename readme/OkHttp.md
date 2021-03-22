@@ -1,40 +1,28 @@
-## OkHttp源码分析
+# OkHttp源码分析
 
-### 涉及内容
-OkHttpClient     
-Request     
-RealCall        
-Dispatcher      
-Intercepters:
-    包括RetryAndFollowIntercepter,BridgeIntercepter,CacheIntercepter,ConnectIntercepter,CallServerInterceper
-    
-以上的这部分内容可以从OkHttp的这段源码中getResponseWithInterceptorChain方法中得出：
-```
-Response getResponseWithInterceptorChain() throws IOException {
-    // Build a full stack of interceptors.
-    List<Interceptor> interceptors = new ArrayList<>();
-    interceptors.addAll(client.interceptors());//应用程序拦截器
-    interceptors.add(retryAndFollowUpInterceptor);
-    interceptors.add(new BridgeInterceptor(client.cookieJar()));
-    interceptors.add(new CacheInterceptor(client.internalCache()));
-    interceptors.add(new ConnectInterceptor(client));
-    if (!forWebSocket) {
-      interceptors.addAll(client.networkInterceptors());
-    }
-    interceptors.add(new CallServerInterceptor(forWebSocket));
+[toc]
 
-    Interceptor.Chain chain = new RealInterceptorChain(interceptors, null, null, null, 0,
-        originalRequest, this, eventListener, client.connectTimeoutMillis(),
-        client.readTimeoutMillis(), client.writeTimeoutMillis());
 
-    return chain.proceed(originalRequest);
-  }
-```
 
-#### OkHttp请求流程如下
-![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-okhttp/images/OkHttp%E8%AF%B7%E6%B1%82%E6%B5%81%E7%A8%8B%E5%9B%BE.jpg)
+## 涉及内容
 
-#### OkHttp同步请求代码
+| 类名                      | 说明                                                         |      |
+| ------------------------- | ------------------------------------------------------------ | ---- |
+| OkHttpClient              | 所有的Http请求的客户端的类，在执行时只会创建一次，然后作为全局实例进行保存 |      |
+| Request                   | 封装一些请求报文信息，url地址，请求方法，请求头              |      |
+| RealCall                  | 代表实际的http请求，是连接request和response的桥梁，有了这个call才能进行实际的网络请求 |      |
+| Dispatcher                | 决定是同步请求还是异步请求。该类内部维护了一个线程池，这些线程池就是用来执行网络请求。Dispatcher当中有3个队列来维护我们的同步、异步请求。 |      |
+| Intercepters              | 进行真正的服务器数据的获取，构建一个拦截器链，然后依次执行拦截器链中的每一个拦截器，将服务器获取到的数据进行返回 |      |
+| RetryAndFollowIntercepter | （1）网络请求失败后重试；（2）服务器返回当前请求需要进行重定向时会直接发起请求。 |      |
+| BridgeIntercepter         | 负责设置请求内容长度、内容编码、GZIP、添加cookie、报头设置、负责请求前的一些操作 |      |
+| CacheIntercepter          | 负责缓存管理，当网络请求有符合要求的网络请求时，会直接返回cache给客户端 |      |
+| ConnectIntercepter        | 为当前的请求找到一个合适的连接，有可能会复用已有的连接，如果存在可以直接复用的连接，就可以不用创建了。这部分会涉及到连接池的概念 |      |
+| CallServerInterceper      | 向服务器发起真正的网络请求                                   |      |
+
+![](imgs/okhttp/okhttp_structure.png)
+
+
+## OkHttp同步请求代码
 ```
 public void synRequest(){
         OkHttpClient client=new OkHttpClient.Builder().build();
@@ -49,10 +37,26 @@ public void synRequest(){
     }
 ```
 
-#### OkHttp同步请求的执行流程和源码分析
+## OkHttp同步方法总结
+
+1. 创建OkHttpClient和Request对象；
+2. 将Request封装成Call对象；
+3. 调用Call的execute()发送同步请求。
+
+注意事项：
+
+- 发送请求后，就会进入阻塞状态，直到收到响应；
+
+## 流程图
+
+![](imgs/okhttp/Okhttp_request_flow.jpg)
+
+## OkHttp同步请求的执行流程和源码分析
+
 在执行同步请求我们调用Response response = call.execute();其中call其实是RealCall的实例对象，下面这段
 代码是RealCall里面的execute()方法
-```
+
+```java
 @Override public Response execute() throws IOException {
     synchronized (this) {//1.同一个Http请求只能被执行一次，否则抛出异常，通过executed予以保证，执行过了就是true
       if (executed) throw new IllegalStateException("Already Executed");
@@ -75,7 +79,7 @@ public void synRequest(){
     }
   }
 ```
-```
+```java
 下面这部分是Dispatcher里面的部分代码：
   /** Running synchronous calls. Includes canceled calls that haven't finished yet. */
   private final Deque<RealCall> runningSyncCalls = new ArrayDeque<>();
@@ -86,13 +90,22 @@ public void synRequest(){
   }
 ```
 
-#### OkHttp同步方法总结
-- 创建OkHttpClient和Request对象
-- 将Request封装成Call对象
-- 调用Call的execute()方法发送同步请求
-
-#### OkHttp异步请求代码
+```java
+// 可以看到Request的构造方法中，定义的就是网络请求的基本配置，包括：请求地址、请求方法、请求头、请求体、请求的tag
+Request(Builder builder) {
+    this.url = builder.url;
+    this.method = builder.method;
+    this.headers = builder.headers.build();
+    this.body = builder.body;
+    this.tags = Util.immutableMap(builder.tags);
+}
 ```
+
+
+
+## OkHttp异步请求代码
+
+```java
 public void asynRequest(){
         OkHttpClient client=new OkHttpClient.Builder().build();
         Request request = new Request.Builder().url("http://www.baidu.com").get().build();
@@ -106,7 +119,7 @@ public void asynRequest(){
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
-                    Log.i("OKHTTP",response.body().string());
+                    
                 }
             });
         }catch (Exception e){
@@ -115,9 +128,20 @@ public void asynRequest(){
     }
 ```
 
-#### OkHttp异步请求的执行流程和源码分析
+## OkHttp异步方法总结
+
+1. 创建OhHttpClient和Request对象；
+2. 将Request封装成Call对象；
+3. 调用Call的enqueue方法进行异步请求。
+
+**注意事项：**
+
+其中onResponse和onFailure都是在工作线程中回调的
+
+## OkHttp异步请求的执行流程和源码分析
+
 同样地，异步OkHttp请求，通过RealCall.enqueue(Callback),以下是enqueue()方法
-```
+```java
 @Override public void enqueue(Callback responseCallback) {
     synchronized (this) {
       if (executed) throw new IllegalStateException("Already Executed");
@@ -130,7 +154,8 @@ public void asynRequest(){
 ```
 从上面的enqueue()方法中，最后调用了Dispatcher的enqueue(new AsyncCall(responseCallback))，其中AsyncCall是
 将我们传递进去的CallBack对象封装成了AsyncCall,实质上就是一个Runnable对象，Dispatcher的enqueue方法如下：
-```
+
+```java
 void enqueue(AsyncCall call) {
     synchronized (this) {
       readyAsyncCalls.add(call);
@@ -139,7 +164,7 @@ void enqueue(AsyncCall call) {
   }
 ```
 直接将AsycCall添加到准备就绪的队列里面，即将被执行,而后紧接着调用pormoteAndExecute()方法
-```
+```java
 /**
    * Promotes eligible calls from {@link #readyAsyncCalls} to {@link #runningAsyncCalls} and runs
    * them on the executor service. Must not be called with synchronization because executing calls
@@ -178,7 +203,8 @@ void enqueue(AsyncCall call) {
 这里的条件就是正在执行的异步请求数小于maxRequests，并且最大的相同域名的请求数小于maxRequestsPerHost，
 线程池中执行的AsyncCall继承自NamedRunnable，在NamedRunnable里面的run()方法，仅仅是做了简单的封装，调用
 子类的execute()方法
-```
+
+```java
 @Override public final void run() {
     String oldName = Thread.currentThread().getName();
     Thread.currentThread().setName(name);
@@ -241,10 +267,7 @@ void enqueue(AsyncCall call) {
   private final Deque<RealCall> runningSyncCalls = new ArrayDeque<>();//正在执行的同步请求或还未完成但被取消的队列
 ```
 
-#### OkHttp异步方法总结
-- 创建OkHttpClient和Request对象
-- 将Request封装成Call对象
-- 调用Call的enqueue()方法发送异步请求
+
 
 *注意：OkHttp发送同步请求后，就会进入阻塞状态，直到收到响应，也就是说当前线程发送同步请求后，就会进
 入阻塞状态，直到收到数据响应，异步请求会重新创建一个工作线程，不会阻塞当前的线程。
@@ -262,17 +285,38 @@ void enqueue(AsyncCall call) {
 疑问3：异步请求为什么需要两个队列？readyAsyncCalls和runningAsyncCalls
 解疑：Dispatcher可以看做是生产者，ExecutorService看做消费者池，那么readyAsyncCalls就是生产者生产的，
       用于缓存，runningAsyncCalls就是消费者正在消费的仓库
-    
-#### OkHttp拦截器
-OkHttp拦截器是OkHttp中提供一种强大机制，他可以实现网络监听、请求以及响应重写、请求失败重试等功能
-![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-okhttp/images/OkHttp%E6%8B%A6%E6%88%AA%E5%99%A81.jpg) 
-![](https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-okhttp/images/OkHttp%E6%8B%A6%E6%88%AA%E5%99%A82.jpg)
+
+根据源码分析，只有异步请求会存在最大请求数及同一域名请求数限制的情况。
+
+疑问4：readyAsyncCalls队列中的任务在什么时候才会被执行呢？
+
+解疑：每一次AsyncCall执行完了，会将readyAsyncCalls中的任务提取到runningAsyncCalls队列中进行执行。
+
+
+
+![](imgs/okhttp/async_call.png)
+
+### 同步/异步总结
+
+- 同步请求就是执行请求的操作是阻塞式，知道HTTP响应返回；
+- 异步请求就类似于非阻塞式的请求，它的执行结果一般都是通过接口回调的方式告知调用者
+
+
+
+## OkHttp拦截器
+
+OkHttp拦截器是OkHttp中提供一种强大机制，他可以实现**网络监听**、请求以及**响应重写**、**请求失败重试**等功能
+![](imgs/okhttp/interceptor_structure.png)
+
+![](imgs/okhttp/interceptor_flow.png)
+
 从上面的图可以看出，拦截器分为Application Interceptors 、OkHttpCore提供的拦截器 以及 Network Interceptors,
 第二张图是OkHttp框架给我们提供的系统内部的拦截器。包括：
+
 - RetryAndFollowUpInterceptor：初始化工作，创建StreamAllocation对象用来传递给后面的拦截器
 - BridgeInterceptor：桥接和适配，用于补充一些Http请求当中缺少的Http的请求头
 - CacheInterceptor：处理缓存
-- ConnectInterceptor：建立可用的连接，是ConnectInterceptor的基础
+- ConnectInterceptor：建立可用的连接，是CallServerInterceptor的基础
 - CallServerInterceptor：将Http请求写进网络得io流当中，并且从读取从服务端返回的io流当中的数据
 
 #### OkHttp拦截器执行流程源码分析
@@ -357,9 +401,20 @@ public Response proceed(Request request, StreamAllocation streamAllocation, Http
 - 调用下一个拦截器，获取response
 - 对response进行处理，返回给上一个拦截器
 
+
+
 #### RetryAndFollowUpInterceptor解析
+
+#### 主要功能
+
+负责失败重连。
+
+注意点：并不是所有的网络请求都可以失败后进行重连，都是有一定的限制范围的。所以OkHttp内部就会进行检测网络异常和响应码的判断，如果都在限制条件范围内，就可以根据条件进行网络请求的重连。
+
+
+
 RetryAndFollowUpInterceptor中intercept方法如下：
-```
+```java
 @Override public Response intercept(Chain chain) throws IOException {
     Request request = chain.request();
     RealInterceptorChain realChain = (RealInterceptorChain) chain;
@@ -415,6 +470,7 @@ RetryAndFollowUpInterceptor中intercept方法如下：
 
       Request followUp;
       try {
+        // 该方法中是实现重定向或重试机制的核心，主要内容就是根据不同的Http响应码来执行不同的重试逻辑。
         followUp = followUpRequest(response, streamAllocation.route());
       } catch (IOException e) {
         streamAllocation.release();
@@ -455,18 +511,52 @@ RetryAndFollowUpInterceptor中intercept方法如下：
 ```
 在上面代码中创建了StreamAllocation对象，这个对象实质上是用来建立执行Http请求所需要的那些网络组件，这里
 我们注意到StreamAllocation虽然是在RetryAndFollowUpInterceptor中创建，但在这个拦截器中并没有使用到，真正
-要使用到会在我们后面的ConnectInterceptor中，主要用于获取连接服务端Connection,连接和用于服务端进行数据传输
-的输入输出流，通过拦截器链传递给ConnectInterceptor
+要使用到会在我们后面的ConnectInterceptor中，**主要用于获取连接服务端Connection，连接和用于服务端进行数据传输**
+**的输入输出流，通过拦截器链传递给ConnectInterceptor**。
+
+
+
+```java
+  private Address createAddress(HttpUrl url) {
+    SSLSocketFactory sslSocketFactory = null;
+    HostnameVerifier hostnameVerifier = null;
+    CertificatePinner certificatePinner = null;
+    if (url.isHttps()) {
+      sslSocketFactory = client.sslSocketFactory();
+      hostnameVerifier = client.hostnameVerifier();
+      certificatePinner = client.certificatePinner();
+    }
+
+    return new Address(url.host(), url.port(), client.dns(), client.socketFactory(),
+        sslSocketFactory, hostnameVerifier, certificatePinner, client.proxyAuthenticator(),
+        client.proxy(), client.protocols(), client.connectionSpecs(), client.proxySelector());
+  }
+```
+
+疑问：其中sslSocketFactory、hostnameVerifier、certificatePinner分别用来做什么？todo
+
+
 
 #### RetryAndFollowUpInterceptor总结
-- 创建StreamAllocation对象
+- 创建StreamAllocation对象，该对象是用来建立网络请求所需要的所有的组件
 - 调用RealInterceptorChain.proceed()方法进行网络请求
 - 根据异常结果或者响应结果判断是否要进行重新请求
 - 调用下一个拦截器，对response进行处理，返回给上一个拦截器
 
-#### BridgeInterceptor解析
+
+
+
+
+### BridgeInterceptor解析
+
+#### 主要功能
+
+主要负责添加请求头，比如设置内容长度、编码方式、设置压缩等。
+
+
+
 BridgeInterceptor的intercept方法如下：
-```
+```java
 @Override public Response intercept(Chain chain) throws IOException {
     Request userRequest = chain.request();
     Request.Builder requestBuilder = userRequest.newBuilder();
@@ -492,6 +582,7 @@ BridgeInterceptor的intercept方法如下：
       requestBuilder.header("Host", hostHeader(userRequest.url(), false));
     }
 
+	// Keep-Alive表示当我们开启一个TCP连接以后，不会立马关闭连接，而是在一段时间内保持连接状态。
     if (userRequest.header("Connection") == null) {
       requestBuilder.header("Connection", "Keep-Alive");
     }
@@ -516,13 +607,13 @@ BridgeInterceptor的intercept方法如下：
 
     Response networkResponse = chain.proceed(requestBuilder.build());
     
-    //对响应头中的cookie进行处理
+    // 对响应头中的cookie进行处理
     HttpHeaders.receiveHeaders(cookieJar, userRequest.url(), networkResponse.headers());
 
     Response.Builder responseBuilder = networkResponse.newBuilder()
         .request(userRequest);
 
-    //对后端返回的response如果是经过gzip压缩过的，那么这里会对其进行解压
+    // 如果客户端请求头设置了gzip，并且服务端响应头也设置了gzip，响应头有内容时
     if (transparentGzip
         && "gzip".equalsIgnoreCase(networkResponse.header("Content-Encoding"))
         && HttpHeaders.hasBody(networkResponse)) {
@@ -546,7 +637,9 @@ BridgeInterceptor的intercept方法如下：
 #### BridgeInterceptor总结
 - 负责将用户构建的一个Request请求转化为能够进行网络访问的请求
 - 将这个符合网络请求的Request进行网络请求
-- 将网络请求回来的响应Response转化为用户可用的response,包括gzip解压
+- 将网络请求回来的响应Response转化为用户可用的response，包括gzip解压，转化为客户端可用的response
+
+
 
 #### OkHttp缓存策略分析
 OkHttp设置缓存
@@ -557,7 +650,7 @@ OkHttpClient client=new OkHttpClient.Builder()
 ```
 其中cache的参数是一个cache目录及其大小
 
-OkHttp内部维持一个清理的线程池，用这个线程池来实现对缓存文件的自动清理和管理工作
+**OkHttp内部维持一个清理的线程池，用这个线程池来实现对缓存文件的自动清理和管理工作**
 
 ```
 if (!requestMethod.equals("GET")) {
@@ -567,8 +660,9 @@ if (!requestMethod.equals("GET")) {
       return null;
 }
 ```
-通过以上的代码块可以看出，OkHttp不会缓存非GET方式的请求数据
-```
+**通过以上的代码块可以看出，OkHttp不会缓存非GET方式的请求数据**
+
+```java
 final InternalCache internalCache = new InternalCache() {
     //从缓存当中获取缓存
     @Override public Response get(Request request) throws IOException {
@@ -601,10 +695,12 @@ final InternalCache internalCache = new InternalCache() {
 ```
 
 ##### Cache的put方法分析
-```
+```java
 @Nullable CacheRequest put(Response response) {
+    // 获取请求方法
     String requestMethod = response.request().method();
 
+    // 如果是POST、PATCH、PUT、DELETE、MOVE中的一种请求方法，则不进行缓存，并且从缓存中移除该请求的内容
     if (HttpMethod.invalidatesCache(response.request().method())) {
       try {
         remove(response.request());
@@ -613,6 +709,8 @@ final InternalCache internalCache = new InternalCache() {
       }
       return null;
     }
+    
+    // 如果请求方法不是GET，则不进行缓存
     if (!requestMethod.equals("GET")) {
       // Don't cache non-GET responses. We're technically allowed to cache
       // HEAD requests and some POST requests, but the complexity of doing
@@ -620,17 +718,21 @@ final InternalCache internalCache = new InternalCache() {
       return null;
     }
 
+    // 如果Vary标头包含"*"，则返回true。 此类响应无法缓存。
     if (HttpHeaders.hasVaryAll(response)) {
       return null;
     }
 
+    // 将Response转换为Entry对象
     Entry entry = new Entry(response);
     DiskLruCache.Editor editor = null;
     try {
+      // 根据url key值获取Editor对象
       editor = cache.edit(key(response.request().url()));
       if (editor == null) {
         return null;
       }
+      // 将Response相关内容写入磁盘 
       entry.writeTo(editor);
       return new CacheRequestImpl(editor);
     } catch (IOException e) {
@@ -640,12 +742,13 @@ final InternalCache internalCache = new InternalCache() {
   }
 ```
 ##### Cache的get方法分析
-```
+```java
 @Nullable Response get(Request request) {
     String key = key(request.url());//更具url获取缓存的key值
     DiskLruCache.Snapshot snapshot;
     Entry entry;
     try {
+      // 从缓存中获取该url对应的快照
       snapshot = cache.get(key);
       if (snapshot == null) {
         return null;
@@ -656,14 +759,17 @@ final InternalCache internalCache = new InternalCache() {
     }
 
     try {
+      // 获取该key值对应的缓存中的Entry
       entry = new Entry(snapshot.getSource(ENTRY_METADATA));
     } catch (IOException e) {
       Util.closeQuietly(snapshot);
       return null;
     }
 
+    // 根据缓存构造缓存的response
     Response response = entry.response(snapshot);
 
+    // 检查url，请求方法，请求头和响应头信息是否匹配
     if (!entry.matches(request, response)) {
       Util.closeQuietly(response.body());
       return null;
@@ -674,7 +780,7 @@ final InternalCache internalCache = new InternalCache() {
 ```
 
 #### CacheInterceptor解析
-```
+```java
  @Override public Response intercept(Chain chain) throws IOException {
     Response cacheCandidate = cache != null
         ? cache.get(chain.request())//获取缓存
@@ -686,16 +792,19 @@ final InternalCache internalCache = new InternalCache() {
     Request networkRequest = strategy.networkRequest;
     Response cacheResponse = strategy.cacheResponse;
 
+    // 更新requestCount、networkCount、hitCount.
     if (cache != null) {
       cache.trackResponse(strategy);
     }
 
+    // 如果不存在缓存，直接关闭缓存body
     if (cacheCandidate != null && cacheResponse == null) {
       closeQuietly(cacheCandidate.body()); // The cache candidate wasn't applicable. Close it.
     }
 
     // If we're forbidden from using the network and the cache is insufficient, fail.
-    if (networkRequest == null && cacheResponse == null) {//无网络，无缓存就构建一个504的Response返回
+    // 无网络，无缓存就构建一个504的Response返回
+    if (networkRequest == null && cacheResponse == null) {
       return new Response.Builder()
           .request(chain.request())
           .protocol(Protocol.HTTP_1_1)
@@ -708,7 +817,8 @@ final InternalCache internalCache = new InternalCache() {
     }
 
     // If we don't need the network, we're done.
-    if (networkRequest == null) {//有缓存直接返回缓存的结果
+    // 有缓存直接返回缓存的结果
+    if (networkRequest == null) {
       return cacheResponse.newBuilder()
           .cacheResponse(stripBody(cacheResponse))
           .build();
@@ -716,7 +826,8 @@ final InternalCache internalCache = new InternalCache() {
 
     Response networkResponse = null;
     try {
-      networkResponse = chain.proceed(networkRequest);//调用拦截器的proceed方法，进行网络数据获取
+      // 调用拦截器的proceed方法，进行网络数据获取
+      networkResponse = chain.proceed(networkRequest);
     } finally {
       // If we're crashing on I/O or otherwise, don't leak the cache body.
       if (networkResponse == null && cacheCandidate != null) {
@@ -725,7 +836,8 @@ final InternalCache internalCache = new InternalCache() {
     }
 
     // If we have a cache response too, then we're doing a conditional get.
-    if (cacheResponse != null) {//既有缓存，又有网络响应，首先做对比
+    // 既有缓存，又有网络响应，首先做对比
+    if (cacheResponse != null) {
       if (networkResponse.code() == HTTP_NOT_MODIFIED) {//网络响应码为304，表示数据未变化
         Response response = cacheResponse.newBuilder()
             .headers(combine(cacheResponse.headers(), networkResponse.headers()))
@@ -754,6 +866,7 @@ final InternalCache internalCache = new InternalCache() {
     if (cache != null) {
       if (HttpHeaders.hasBody(response) && CacheStrategy.isCacheable(response, networkRequest)) {
         // Offer this request to the cache.
+        // 缓存
         CacheRequest cacheRequest = cache.put(response);
         return cacheWritingResponse(cacheRequest, response);
       }
@@ -771,33 +884,49 @@ final InternalCache internalCache = new InternalCache() {
   }
 ```
 
+
+
 #### ConnectInterceptor解析
 
 作用：ConnectInterceptor就是打开与服务器的连接，正式开启网络连接
-```
+```java
+/** Opens a connection to the target server and proceeds to the next interceptor. */
+public final class ConnectInterceptor implements Interceptor {
+  public final OkHttpClient client;
+
+  public ConnectInterceptor(OkHttpClient client) {
+    this.client = client;
+  }
+
   @Override public Response intercept(Chain chain) throws IOException {
     RealInterceptorChain realChain = (RealInterceptorChain) chain;
     Request request = realChain.request();
-    //在前面分析的RetryAndFollowUpInterceptor中创建StreamAllocation，StreamAllocation是用来建立执行
-    //http请求所需要的网络的组件，分配Stream
+    // 在前面分析的RetryAndFollowUpInterceptor中创建StreamAllocation，StreamAllocation是用来建立执行
+    // http请求所需要的网络的组件，分配Stream
     StreamAllocation streamAllocation = realChain.streamAllocation();
 
     // We need the network to satisfy this request. Possibly for validating a conditional GET.
+    // 我们需要网络来满足此要求。可能用于验证条件GET
     boolean doExtensiveHealthChecks = !request.method().equals("GET");
-    //HttpCodec用于编码Request 和 解码Response
+    // HttpCodec用于编码Request 和 解码Response
     HttpCodec httpCodec = streamAllocation.newStream(client, chain, doExtensiveHealthChecks);
-    //RealConnection用于实际的网络io传输，
+      
+    // RealConnection用于实际的网络io传输
     RealConnection connection = streamAllocation.connection();
 
     return realChain.proceed(request, streamAllocation, httpCodec, connection);
   }
+}
 ```
 总结：
 1. ConnectInterceptor获取Interceptor传过来的StreamAllocation,streamAllocation.newStream()得到HttpCodec；
 2. 将刚才创建的用于网络IO得RealConnection对象，以及对于与服务器交互最为关键的HttpCodec等对象传递给后面的拦截器。
 
+
+
 以下分析以下上端代码中的StreamAllocation的newStream(client, chain, doExtensiveHealthChecks)方法
-```
+
+```java
 public HttpCodec newStream(OkHttpClient client, Interceptor.Chain chain, boolean doExtensiveHealthChecks) {
     int connectTimeout = chain.connectTimeoutMillis();
     int readTimeout = chain.readTimeoutMillis();
@@ -806,6 +935,7 @@ public HttpCodec newStream(OkHttpClient client, Interceptor.Chain chain, boolean
     boolean connectionRetryEnabled = client.retryOnConnectionFailure();
 
     try {
+      // 查找连接，如果连接状况良好，则将其返回。 如果不健康，请重复此过程，直到找到健康的连接为止。
       RealConnection resultConnection = findHealthyConnection(connectTimeout, readTimeout,
           writeTimeout, pingIntervalMillis, connectionRetryEnabled, doExtensiveHealthChecks);//再分析该方法
       HttpCodec resultCodec = resultConnection.newCodec(client, chain, this);
@@ -863,7 +993,7 @@ public HttpCodec newStream(OkHttpClient client, Interceptor.Chain chain, boolean
     
           // Attempt to use an already-allocated connection. We need to be careful here because our
           // already-allocated connection may have been restricted from creating new streams.
-          //尝试去使用一个已经分配的连接，也就是复用连接，这里需要注意的是，已经分配的连接可能被限制去创建新的流
+          // 尝试去使用一个已经分配的连接，也就是复用连接，这里需要注意的是，已经分配的连接可能被限制去创建新的流
           releasedConnection = this.connection;
           toClose = releaseIfNoNewStreams();
           if (this.connection != null) {
@@ -1004,10 +1134,11 @@ public HttpCodec newStream(OkHttpClient client, Interceptor.Chain chain, boolean
   
       while (true) {
         try {
-          //是否需要建立tunnel，内部进行的判断是address.sslSocketFactory != null && proxy.type() == Proxy.Type.HTTP
+          // 是否需要建立tunnel，内部进行的判断是
+          // address.sslSocketFactory != null && proxy.type() == Proxy.Type.HTTP
           if (route.requiresTunnel()) {
-            //该方法可以完成在代理通道上构建HTTPS连接的所有工作。这里的问题是代理服务器可以发出身份
-            //验证挑战，然后关闭连接。
+            // 该方法可以完成在代理通道上构建HTTPS连接的所有工作。这里的问题是代理服务器可以发出身份
+            // 验证挑战，然后关闭连接。
             connectTunnel(connectTimeout, readTimeout, writeTimeout, call, eventListener);
             if (rawSocket == null) {
               // We were unable to connect the tunnel but properly closed down our resources.
@@ -1061,18 +1192,24 @@ public HttpCodec newStream(OkHttpClient client, Interceptor.Chain chain, boolean
 总结以上调用流程：
 * 弄一个RealConnection对象
 * 根据是否需要隧道连接，选择不同连接方式，一种是隧道连接，一种是原始的socket连接
-* CallServerInterceptor
+* 调用CallServerInterceptor来完成网络请求
+
+
 
 ##### ConnectionPool解析
+
 ```
 Manages reuse of HTTP and HTTP/2 connections for reduced network latency. HTTP requests that
 share the same {@link Address} may share a {@link Connection}. This class implements the policy
 of which connections to keep open for future use.
 ```
+管理HTTP和HTTP / 2连接的重用，以减少网络延迟。 共享相同Address HTTP请求可以共享一个Connection 。 此类实现了将哪些连接保持打开状态以备将来使用的策略。
+
 以上这部分大致意思就是：
     对HTTP和HTTP/2的连接进行管理复用，以便减少网络请求的延迟。那些共用同一个Address的Http 请求，
     可以共用一个连接。ConnectionPool这个类实现了保持那些Connection 为open状态，以便未来复用。
     
+
 ```
 //这是一个用于清楚过期链接的线程池，每个线程池最多只能运行一个线程，并且这个线程池允许被垃圾回收
 private static final Executor executor = new ThreadPoolExecutor(0 /* corePoolSize */,
@@ -1386,4 +1523,4 @@ private final Runnable cleanupRunnable = new Runnable() {
 
 
 
-    
+​    

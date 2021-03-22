@@ -10,8 +10,8 @@ public class ProxyObject extends AbstractObject {
     @Override
     protected void operation() {
         System.out.println("do something before real operation...");
-        if (mRealObject==null){
-            mRealObject=new RealObject();
+        if (mRealObject == null) {
+            mRealObject = new RealObject();
         }
         mRealObject.operation();
         System.out.println("do something after real operation...");

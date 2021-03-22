@@ -1,8 +1,9 @@
 package com.tencent.demo_okhttp;
 
 import android.os.Bundle;
-import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+
+import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.File;
 import java.io.IOException;
@@ -15,8 +16,6 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
-
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * OkHttp异步请求
      */
-    public void asynRequest(){
+    public void asyncRequest(){
         OkHttpClient client=new OkHttpClient.Builder()
                 .cache(new Cache(new File("cache"),24*1024*1024))
                 .build();

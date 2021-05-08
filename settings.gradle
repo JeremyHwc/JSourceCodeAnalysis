@@ -2,6 +2,9 @@
 ':demo-disklrucache', ':demo-four-components', ':demo-retrofit',':annotations', ':AnnotationProcessor',
 ':demo-butterknife', ':demo-eventbus', ':demo-sqlite', ':demo-blockcanary'*/
 //include ':app'
-include ':demo-okhttp'
+//include ':demo-okhttp'
 include ':demo-retrofit'
 //include ':demo-leakcanary'
+//include ':demo-blockcanary'
+//include ':demo-butterknife'
+//include ':demo-glide'

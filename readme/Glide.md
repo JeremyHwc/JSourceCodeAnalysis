@@ -1,27 +1,32 @@
-# Glide源码分析
+[toc]
 
 ## Glide几个基本概念
-    （1）Model --- 表示的是数据来源，url，文件，资源id
-    （2）Data --- 数据源中获取到model后，会加工成原始数据，一般是inputstream，而负责从数据源中获取原始数据的叫做ModelLoader
-    （3）Resource --- 负责从刚才得到的原始数据进行解码，解码之后的资源就叫做Resource，负责解码的就叫做ResourceDecoder
-    （4）TransformedResource --- 把Resource进行变换，ResourceTransform来进行转换，转换后的资源就叫做TransformedResource
-    （5）TranscodedResource --- 转码，glide除了能加载静态图之外，还能加载动态图，但是解码之后的bitmap和gifDrawable,其类型不是统一的，
-                                为了方便处理，glide就会把bitmap转换成glideBitmapDrawable,这样类型就统一了，负责转码的角色叫
-                                transcode,而转码之后的就叫做TranscodeResource
-    （6）Target --- 将图片显示在目标上，Glide将我们显示的目标封装成Target
-    
-    流程图：
-        Model --ModelLoader--> Data --Decoder--> Resource --Transform--> TransformedResource --Transcode -->TranscodeResource -->Target
-        
-<img src="https://github.com/JeremyHwc/JSourceCodeAnalysis/blob/master/demo-glide/src/main/res/drawable/Glide%E6%B5%81%E7%A8%8B%E5%9B%BE.jpg" width ="800" height="200"/>
+
+**Model：**表示的是数据来源，url，文件，资源id。
+
+**Data：**数据源中获取到model后，会加工成原始数据，一般是inputstream，而负责从数据源中获取原始数据的叫做ModelLoader。
+
+**Resource：**负责从刚才得到的原始数据进行解码，解码之后的资源就叫做Resource，负责解码的就叫做ResourceDecoder。
+
+**TransformedResource：**把Resource进行变换，ResourceTransform来进行转换，转换后的资源就叫做TransformedResource。
+
+**TranscodedResource：**转码，Glide除了能加载静态图之外，还能加载动态图，但是解码之后的bitmap和gifDrawable,其类型不是统一的，为了方便处理，glide就会把bitmap转换成glideBitmapDrawable，这样类型就统一了，负责转码的角色叫 transcode，而转码之后的就叫做TranscodedResource。
+
+**Target：**将图片显示在目标上，Glide将我们显示的目标封装成Target。
+
+下图是整个glide的整个加载图片的流程：
+
+![](imgs/glide/glide_flow.jpg)
+
+
 
 ## Glide源码分析
+
 1. Glide.with(Context context)
-        其内部通过获取到一个无界面的Fragment添加到Activity，Glide无法监听到Activity的生命周期，只能通
-        过Fragment来监听，从而完成绑定activity生命周期，来选择图片加载的过程
-        
-        with方法是为了获取到RequestManager对象,管理我们的图片请求流程
-        
+    
+    with方法是为了获取到RequestManager对象，管理我们的图片请求流程。 其内部通过获取到一个无界面的Fragment添加到Activity，并且将RequestManager与Application或Fragment的周期进行绑定。
+    
+    
 2. load(String url)
         这个方法返回DrawableTypeRequest，这个对象代表着所有Glide中加载图片的所有request请求;
         这个方法其实都是做的一些初始化工作，返回一个DrawableTypeRequest对象，其初始化配置工作其实都是在
@@ -52,7 +57,7 @@
     DrawableTypeRequest作用：
         
         主要将我们要加载的图片强制转换成bitmap或者gif，方法是asBitmap(),asGif()
-    
+
 3. into(ImageView view)
 ```java
 public class GenericRequestBuilder<ModelType, DataType, ResourceType, TranscodeType> implements Cloneable {
@@ -87,14 +92,15 @@ public class GenericRequestBuilder<ModelType, DataType, ResourceType, TranscodeT
 }
 ```
         into方法的实现最终都是在GenericRequestBuilder当中
-        
+
 4. Glide缓存  
 (1)内存缓存，防止频繁地将图片读取到内存当中；
     LruCache:近期最少使用的算法，将最近所使用到的对象的引用存储在LinkedHashMap上，并且将最近最少使用
             的对象在缓存池达到阈值之前清除掉。
     弱引用：
+   
     
-    
+
 (2)硬盘缓存，防止重复地从网络下载我们所需要的图片。
 
 5. Bitmap面试题
